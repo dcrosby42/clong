@@ -1,4 +1,4 @@
-(ns example1.core
+(ns clong.core
   (:gen-class)
   (:import (com.badlogic.gdx Gdx ApplicationListener Input Input$Keys InputAdapter Game Screen)
      (com.badlogic.gdx.graphics GL10 Mesh VertexAttribute)
@@ -247,7 +247,7 @@
              (ref-set app a))
     true))
     
-(defn rl [] (use 'example1.core :reload))
+(defn rl [] (use 'clong.core :reload))
 
 (defn set-screen [s] (.setScreen @game s))
 

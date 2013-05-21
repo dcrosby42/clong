@@ -1,6 +1,6 @@
-(ns hellotri.core-test
+(ns clong.core-test
   (:use clojure.test
-        hellotri.core))
+        clong.core))
 
 (deftest a-test
   (testing "FIXME, I fail."
