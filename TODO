@@ -6,5 +6,10 @@ Features:
 - Count score when goal is struck
 - Display score counter
 - Pause on space
+- Fire bullets from paddles
 
+Tech:
+- Bring "graph" plumbing library in
+- Collision detection should be outside the specific upater for ball?
+- 
 
