@@ -90,8 +90,8 @@
 
 (def base-state 
   {
-   :red-paddle   {:id :red-paddle, :position [20 0], :size [12 48], :color [1 0 0 1]}
-   :green-paddle {:id :green-paddle, :position [440 30], :size [12 48], :color [0 1 0 1]}
+   :red-paddle   {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]}
+   :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
    :ball {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 0]}
    })
 
@@ -258,7 +258,6 @@
 
 
 
-(defn -main
-  "I don't do a whole lot ... yet."
-  [& args]
-  (println "Hello, World!"))
+
+(defn -main [& args]
+  )
