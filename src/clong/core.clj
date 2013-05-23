@@ -81,7 +81,13 @@
 (defn read-held-keys [watch-list]
   (into #{} (doall (filter is-key-down? watch-list))))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; INITIALIZE
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 30]})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -125,10 +131,15 @@
 (defn contains-pt [[t l b r] [x y]]
   (and (> x l) (< x r) (> y b) (< y t)))
 
+(defn box-piercing-box? [smaller larger]
+  (let [pts (to-pts smaller)]
+    (some #(contains-pt larger %1) pts)))
+
 (defn ball-collide-paddle? [ball paddle]
   (let [box (to-tlbr paddle)
         pts (to-pts (to-tlbr ball))]
     (some #(contains-pt box %1) pts)))
+
   
 (defn handle-ball-paddle-collision [ball]
   (let [{vel :velocity} ball
@@ -154,28 +165,50 @@
     ball))
 
 (defn collide-ball-top-bottom [screen-bounds ball]
-  (let [{[x y] :position [w h] :size}               ball
+  (let [{[x y] :position [w h] :size}   ball
         [s-top s-left s-bottom s-right] screen-bounds]
     (if (or (>= (+ y h) s-top) (<= y s-bottom) false)
       (handle-ball-top-bottom-collision ball)
       ball)))
 
+;{ :id :owner :body }
+(defn first-overlapping-goal [goals ball]
+  (first (drop-while (fn [goal] (not (box-piercing-box? (to-tlbr ball) (to-tlbr (:body goal))))) goals)))
+
+
+(defn detect-goal [goals ball]
+  ;(println "detect-goal" goals ball)
+  (if-let [goal (first-overlapping-goal goals ball)]
+    (assoc ball :in-goal-of (:owner goal))
+    ball))
 
 (defn update-ball [ball dt paddles goals screen-bounds] 
-  (collide-ball-top-bottom screen-bounds 
-                           (collide-ball-paddles paddles
-                                                 (move-ball dt ball))))
+  (detect-goal goals 
+             (collide-ball-top-bottom screen-bounds 
+                                      (collide-ball-paddles paddles
+                                                            (move-ball dt ball)))))
+(defn score-hit [ball score]
+  (if-let [player (:in-goal-of ball)]
+    (assoc score player (+ 1 (get score player)))
+    score))
+
 
 (defn update-state [state dt input] 
-  (let [{red :red-paddle green :green-paddle ball :ball}  state
+  (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score}  state
         ured (update-paddle red input)
         ugreen (update-paddle green input)
-        uball (update-ball ball dt [red green] [] (:bounds state))
+        uball (if (<= ((:position ball) 0) 485) (update-ball ball dt [red green] goals bounds) ball)
+        score-event (if (:in-goal-of uball) true false)
+        uscore (if score-event (score-hit uball score) score)
+        uball1 (if score-event (new-ball) uball)
+        ;_ (if-not (= score uscore) (println uscore))
         ]
     (assoc state 
            :red-paddle ured 
            :green-paddle ugreen 
-           :ball uball)
+           :ball uball1
+           :score uscore
+           )
   ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -241,8 +274,11 @@
   {
    :red-paddle   {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]}
    :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
-   :ball {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 30]}
+   :ball (new-ball)
    :bounds [320 0 0 480] ; t l b r
+   :goals [ { :id :red-goal, :owner :red, :body { :position [-20 0] :size [20 320] } }
+            { :id :green-goal, :owner :green, :body { :position [480 0] :size [20 320] } } ]
+   :score { :red 0 :green 0 }
    })
 
 
@@ -258,7 +294,8 @@
 (defonce state (ref base-state))
 (defonce stuff (ref {}))
 (defn new-state [] (dosync (ref-set state base-state)))
-(defn bb [] (dosync (alter state assoc :ball (:ball base-state))))
+(defn new-ball [] (:ball base-state))
+(defn bb [] (dosync (alter state assoc :ball new-ball)))
 
 (defn start []
   (let [g (ez-game)
