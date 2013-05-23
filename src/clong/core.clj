@@ -171,7 +171,6 @@
       (handle-ball-top-bottom-collision ball)
       ball)))
 
-;{ :id :owner :body }
 (defn first-overlapping-goal [goals ball]
   (first (drop-while (fn [goal] (not (box-piercing-box? (to-tlbr ball) (to-tlbr (:body goal))))) goals)))
 
@@ -179,7 +178,7 @@
 (defn detect-goal [goals ball]
   ;(println "detect-goal" goals ball)
   (if-let [goal (first-overlapping-goal goals ball)]
-    (assoc ball :in-goal-of (:owner goal))
+    (assoc ball :goal-scored-by (:scorer-for goal))
     ball))
 
 (defn update-ball [ball dt paddles goals screen-bounds] 
@@ -188,7 +187,7 @@
                                       (collide-ball-paddles paddles
                                                             (move-ball dt ball)))))
 (defn score-hit [ball score]
-  (if-let [player (:in-goal-of ball)]
+  (if-let [player (:goal-scored-by ball)]
     (assoc score player (+ 1 (get score player)))
     score))
 
@@ -198,7 +197,7 @@
         ured (update-paddle red input)
         ugreen (update-paddle green input)
         uball (if (<= ((:position ball) 0) 485) (update-ball ball dt [red green] goals bounds) ball)
-        score-event (if (:in-goal-of uball) true false)
+        score-event (if (:goal-scored-by uball) true false)
         uscore (if score-event (score-hit uball score) score)
         uball1 (if score-event (new-ball) uball)
         ;_ (if-not (= score uscore) (println uscore))
@@ -276,8 +275,8 @@
    :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
    :ball (new-ball)
    :bounds [320 0 0 480] ; t l b r
-   :goals [ { :id :red-goal, :owner :red, :body { :position [-20 0] :size [20 320] } }
-            { :id :green-goal, :owner :green, :body { :position [480 0] :size [20 320] } } ]
+   :goals [ { :id :red-goal, :scorer-for :green, :body { :position [-20 0] :size [20 320] } }
+            { :id :green-goal, :scorer-for :red, :body { :position [480 0] :size [20 320] } } ]
    :score { :red 0 :green 0 }
    })
 
