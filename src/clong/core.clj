@@ -82,18 +82,6 @@
   (into #{} (doall (filter is-key-down? watch-list))))
 
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; STATE
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def base-state 
-  {
-   :red-paddle   {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]}
-   :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
-   :ball {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 0]}
-   })
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -142,28 +130,47 @@
         pts (to-pts (to-tlbr ball))]
     (some #(contains-pt box %1) pts)))
   
+(defn handle-ball-paddle-collision [ball]
+  (let [{vel :velocity} ball
+        vel1 [(* -1 (vel 0)) (vel 1)]]
+    (assoc ball :velocity vel1)))
 
-(defn update-ball [ball dt paddles goals]
-  (let [{[x y] :position vel :velocity} ball
-        pos [(+ (* dt (vel 0)) x) (+ (* dt (vel 1)) y)]
-        next-ball (assoc ball :position pos)
-        collided? (some #(ball-collide-paddle? next-ball %1) paddles)
-        rev-vel [(* -1 (vel 0)) (vel 1)]
+(defn handle-ball-top-bottom-collision [ball]
+  (let [{vel :velocity} ball
+        vel1 [(vel 0) (* -1 (vel 1))]
+        ;_ (println "ball vel changed to" vel1 ball)
         ]
-        
-    (if collided? 
-      (let [b (assoc ball :velocity rev-vel)]
-        (do
-          ;(println "Collied ball" b)
-          b))
-      next-ball)
-  ))
+    (assoc ball :velocity vel1)))
+
+
+(defn move-ball [dt ball]
+  (let [{[x y] :position vel :velocity} ball
+        dest [(+ (* dt (vel 0)) x) (+ (* dt (vel 1)) y)]]
+    (assoc ball :position dest)))
+
+(defn collide-ball-paddles [paddles ball]
+  (if (some #(ball-collide-paddle? ball %1) paddles)
+    (handle-ball-paddle-collision ball)
+    ball))
+
+(defn collide-ball-top-bottom [screen-bounds ball]
+  (let [{[x y] :position [w h] :size}               ball
+        [s-top s-left s-bottom s-right] screen-bounds]
+    (if (or (>= (+ y h) s-top) (<= y s-bottom) false)
+      (handle-ball-top-bottom-collision ball)
+      ball)))
+
+
+(defn update-ball [ball dt paddles goals screen-bounds] 
+  (collide-ball-top-bottom screen-bounds 
+                           (collide-ball-paddles paddles
+                                                 (move-ball dt ball))))
 
 (defn update-state [state dt input] 
   (let [{red :red-paddle green :green-paddle ball :ball}  state
         ured (update-paddle red input)
         ugreen (update-paddle green input)
-        uball (update-ball ball dt [red green] [])
+        uball (update-ball ball dt [red green] [] (:bounds state))
         ]
     (assoc state 
            :red-paddle ured 
@@ -224,6 +231,19 @@
        }
       )))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; STATE
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def base-state 
+  {
+   :red-paddle   {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]}
+   :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
+   :ball {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 30]}
+   :bounds [320 0 0 480] ; t l b r
+   })
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
