@@ -109,7 +109,10 @@
   {:red-paddle   {:up   [:held Input$Keys/W]
                   :down [:held Input$Keys/S]}
    :green-paddle {:up   [:held Input$Keys/UP]
-                  :down [:held Input$Keys/DOWN]}})
+                  :down [:held Input$Keys/DOWN]}
+   :master       {:start [:pressed Input$Keys/ENTER]
+                  :pause [:pressed Input$Keys/SPACE]}
+   })
 
 (def held-key-watch-list (map #(get %1 1) (mapcat vals (vals controller-mapping))))
 
@@ -200,7 +203,23 @@
     score))
 
 
-(defn update-state [state dt input] 
+(defn update-mode [state input]
+    (let [controls (vmap (fn [k v] (resolve-control input v)) (:master controller-mapping))
+          {mode :mode} state
+          ]
+      (if (:pause controls)
+        (case mode
+          :paused :playing 
+          :playing :paused
+          mode)
+        (if (:start controls)
+          (case mode
+            :ready :playing
+            mode)
+          mode))))
+
+
+(defn update-state-playing [state dt input] 
   (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score}  state
         ured (update-paddle red input)
         ugreen (update-paddle green input)
@@ -208,14 +227,36 @@
         score-event (if (:goal-scored-by uball) true false)
         uscore (if score-event (score-hit uball score) score)
         uball1 (if score-event (new-ball) uball)
+        umode (update-mode state input)
         ]
     (assoc state 
            :red-paddle ured 
            :green-paddle ugreen 
            :ball uball1
            :score uscore
+           :mode umode
            )
   ))
+
+(defn update-state-ready [state dt input] 
+  (let [umode (update-mode state input)]
+    (assoc state :mode umode)
+  ))
+
+(defn update-state-paused [state dt input] 
+  (let [umode (update-mode state input)]
+    (assoc state :mode umode)
+  ))
+
+(defn update-state [state dt input] 
+  (case (:mode state)
+    :ready (update-state-ready state dt input)
+    :playing (update-state-playing state dt input)
+    :paused (update-state-paused state dt input)
+    state
+    )
+)
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -231,12 +272,14 @@
 
 (defn draw-hud [shape-renderer camera font sprite-batch state]
   (let [{red-score :red green-score :green} (:score state)
+        {game-mode :mode} state
         ]
     (.setProjectionMatrix sprite-batch (.combined camera))
     (.begin sprite-batch)
 
     (.draw font sprite-batch (str "Red: " red-score) 20 20)
     (.draw font sprite-batch (str "Green: " green-score) 400 20)
+    (.draw font sprite-batch (str game-mode) 220 20)
 
     (.end sprite-batch)
     ))
@@ -295,6 +338,7 @@
 
        :render (fn [dt]
                   (let [input (next-input)] ;; Get input
+                    ;(if-not (= input key-input-events) (println input))
                     ;; Update game state
                     (dosync 
                       (alter stuff assoc 
@@ -320,6 +364,7 @@
 
 (def base-state 
   {
+   :mode :ready
    :red-paddle   {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]}
    :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
    :ball (new-ball)
