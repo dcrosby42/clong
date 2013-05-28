@@ -32,6 +32,7 @@
                      :pause   (fn [])
                      :resume  (fn [])
                      :dispose (fn [])} opts)
+        
         ]
     (let [broken (ref false)]
       (proxy [Screen] []
@@ -305,7 +306,7 @@
     
 (defn rl [] (use 'clong.core :reload))
 
-(defn set-screen [s] (.setScreen @game s))
+(defn set-screen [s] (.postRunnable @app (fn [] (.setScreen @game s))))
 
 (defn sb [] (set-screen (sandbox-screen state stuff)))
 
