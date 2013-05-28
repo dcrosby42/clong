@@ -1,7 +1,8 @@
 (ns clong.core
   (:gen-class)
   (:import (com.badlogic.gdx Gdx ApplicationListener Input Input$Keys InputAdapter Game Screen)
-     (com.badlogic.gdx.graphics GL10 Mesh VertexAttribute)
+     (com.badlogic.gdx.graphics GL10 Mesh VertexAttribute OrthographicCamera)
+     (com.badlogic.gdx.graphics.g2d SpriteBatch BitmapFont)
      (com.badlogic.gdx.graphics.glutils ShapeRenderer ShapeRenderer$ShapeType)
      (com.badlogic.gdx.backends.lwjgl LwjglApplication)))
 
@@ -36,7 +37,15 @@
         ]
     (let [broken (ref false)]
       (proxy [Screen] []
-        (show [] ((:show opts)))
+        (show [] 
+          (do
+            (.glClear Gdx/gl GL10/GL_COLOR_BUFFER_BIT)
+            (if (not @broken)
+              (try 
+                ((:show opts))
+                (catch Throwable th (do 
+                                      (dosync (ref-set broken true))
+                                      (println "SHOW ERROR!" th)(.printStackTrace th)))))))
         (render [dt] 
           (do
             (.glClear Gdx/gl GL10/GL_COLOR_BUFFER_BIT)
@@ -45,7 +54,7 @@
                 ((:render opts) dt)
                 (catch Throwable th (do 
                                       (dosync (ref-set broken true))
-                                      (println "ERROR!" th)(.printStackTrace th)))))))
+                                      (println "RENDER ERROR!" th)(.printStackTrace th)))))))
 
         (resize [w,h] ((:resize opts) w h))
         (hide [] ((:hide opts)))
@@ -150,7 +159,6 @@
 (defn handle-ball-top-bottom-collision [ball]
   (let [{vel :velocity} ball
         vel1 [(vel 0) (* -1 (vel 1))]
-        ;_ (println "ball vel changed to" vel1 ball)
         ]
     (assoc ball :velocity vel1)))
 
@@ -177,7 +185,6 @@
 
 
 (defn detect-goal [goals ball]
-  ;(println "detect-goal" goals ball)
   (if-let [goal (first-overlapping-goal goals ball)]
     (assoc ball :goal-scored-by (:scorer-for goal))
     ball))
@@ -201,7 +208,6 @@
         score-event (if (:goal-scored-by uball) true false)
         uscore (if score-event (score-hit uball score) score)
         uball1 (if score-event (new-ball) uball)
-        ;_ (if-not (= score uscore) (println uscore))
         ]
     (assoc state 
            :red-paddle ured 
@@ -218,15 +224,34 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn draw-block [srend {[x y] :position [w h] :size [r g b a] :color}]
   (doto srend
-  (.begin ShapeRenderer$ShapeType/Filled)
-  (.setColor r g b a)
-  (.rect x y w h)
-  (.end)))
+    (.begin ShapeRenderer$ShapeType/Filled)
+    (.setColor r g b a)
+    (.rect x y w h)
+    (.end)))
 
-(defn draw-level [shape-renderer state]
+(defn draw-hud [shape-renderer camera font sprite-batch state]
+  (let [{red-score :red green-score :green} (:score state)
+        ]
+    (.setProjectionMatrix sprite-batch (.combined camera))
+    (.begin sprite-batch)
+
+    (.draw font sprite-batch (str "Red: " red-score) 20 20)
+    (.draw font sprite-batch (str "Green: " green-score) 400 20)
+
+    (.end sprite-batch)
+    ))
+
+
+(defn draw-level [shape-renderer camera font sprite-batch state]
+
+  ;; Draw block shapes:
   (doall(map 
           (comp (partial draw-block shape-renderer) state) 
-          [:red-paddle :green-paddle :ball])))
+          [:red-paddle :green-paddle :ball]))
+  
+  ;; Scores etc
+  (draw-hud shape-renderer camera font sprite-batch state)
+  )
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -235,16 +260,39 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn ortho-cam [screen-w screen-h]
+  (let [camera (OrthographicCamera.)]
+    (set! (. camera viewportHeight) screen-h)
+    (set! (. camera viewportWidth) screen-w)
+    (.set (.position camera) (* 0.5 screen-w) (* 0.5 screen-h) 0)
+    (.update camera)
+    camera))
+
 
 (defn sandbox-screen [state stuff]
-  (let [shape-renderer (ShapeRenderer.)
+  (let [shape-renderer (ref nil)
+        camera (ref nil)
+        font (ref nil)
+        sprite-batch (ref nil)
         input-events (ref key-input-events)
         input-processor (my-input-processor input-events)
         next-input (fn [] (assoc @input-events :held (read-held-keys held-key-watch-list)))
         ]
     (ez-screen 
       {:show (fn [] 
-               (.setInputProcessor Gdx/input input-processor))
+               (let [_shape-renderer (ShapeRenderer.)
+                     _camera         (ortho-cam 480 320)
+                     _font           (BitmapFont.)
+                     _sprite-batch   (SpriteBatch.)
+                     ]
+                 (.setInputProcessor Gdx/input input-processor)
+                 (dosync
+                   (ref-set shape-renderer _shape-renderer)
+                   (ref-set camera _camera)
+                   (ref-set font _font)
+                   (ref-set sprite-batch _sprite-batch)
+                   )))
+
        :render (fn [dt]
                   (let [input (next-input)] ;; Get input
                     ;; Update game state
@@ -256,7 +304,7 @@
                       )
 
                     ;; Draw
-                    (draw-level shape-renderer @state)
+                    (draw-level @shape-renderer @camera @font @sprite-batch @state)
 
                     ;; Clear input state
                     (dosync (ref-set input-events key-input-events)))
@@ -294,8 +342,8 @@
 (defonce state (ref base-state))
 (defonce stuff (ref {}))
 (defn new-state [] (dosync (ref-set state base-state)))
-(defn new-ball [] (:ball base-state))
-(defn bb [] (dosync (alter state assoc :ball new-ball)))
+;(defn new-ball [] (:ball base-state))
+(defn bb [] (dosync (alter state assoc :ball (new-ball))))
 
 (defn start []
   (let [g (ez-game)

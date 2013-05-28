@@ -3,8 +3,8 @@ Features:
 - Delay ball instantiation and launch until Enter
 - Light randomization of initial ball launch
 - Deflect off ceiling and floor
-- Count score when goal is struck
-- Display score counter
+/ Count score when goal is struck
+/ Display score counter
 - Pause on space
 - Fire bullets from paddles
 
