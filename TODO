@@ -2,14 +2,19 @@ Features:
 
 - Delay ball instantiation and launch until Enter
 - Light randomization of initial ball launch
-- Deflect off ceiling and floor
+/ Deflect off ceiling and floor
 / Count score when goal is struck
 / Display score counter
-- Pause on space
+/ Pause on space
 - Fire bullets from paddles
 
 Tech:
 - Bring "graph" plumbing library in
 - Collision detection should be outside the specific upater for ball?
-- 
+
+Smells:
+- Paused and Ready state repeat the update-mode logic
+- Paused/playing/ready updaters all call the same update-mode function, which then branches internally on state
+  -> seems like there could be a more cause-effect relationship
+
 
