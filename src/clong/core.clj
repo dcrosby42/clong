@@ -241,15 +241,21 @@
            )
   ))
 
-(defn update-state-ready [state dt input] 
-  (let [umode (update-mode state input)]
+(defn default-transition [old-state state] state)
+
+(defn transition-to-ready [old-state state]
     (assoc state 
-           :mode umode
            :ball (new-ball)
            :red-paddle (new-red-paddle)
-           :green-paddle (new-green-paddle)
-           )
-  ))
+           :green-paddle (new-green-paddle)))
+
+(def transition-to-playing default-transition)
+(def transition-to-paused default-transition)
+(def transition-to-scored default-transition)
+
+(defn update-state-ready [state dt input] 
+  (let [umode (update-mode state input)]
+    (assoc state :mode umode)))
 
 (defn update-state-paused [state dt input] 
   (let [umode (update-mode state input)]
@@ -261,15 +267,23 @@
     (assoc state :mode umode)
   ))
 
+
 (defn update-state [state dt input] 
-  (case (:mode state)
-    :ready (update-state-ready state dt input)
-    :playing (update-state-playing state dt input)
-    :paused (update-state-paused state dt input)
-    :scored (update-state-scored state dt input)
-    state
-    )
-)
+  (let [next-state (case (:mode state)
+                     :ready (update-state-ready state dt input)
+                     :playing (update-state-playing state dt input)
+                     :paused (update-state-paused state dt input)
+                     :scored (update-state-scored state dt input)
+                     state)]
+    (if (= (:mode state) (:mode next-state))
+      next-state
+      (case (:mode next-state)
+        :ready (transition-to-ready state next-state)
+        :playing (transition-to-playing state next-state)
+        :paused (transition-to-paused state next-state)
+        :scored (transition-to-scored state next-state)
+        next-state))))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
