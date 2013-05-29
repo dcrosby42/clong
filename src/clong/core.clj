@@ -227,7 +227,7 @@
         score-event (if (:goal-scored-by uball) true false)
         uscore (if score-event (score-hit uball score) score)
         uball1 (if score-event (new-ball) uball)
-        umode (update-mode state input)
+        umode (if score-event :ready (update-mode state input))
         ]
     (assoc state 
            :red-paddle ured 
@@ -270,7 +270,7 @@
     (.rect x y w h)
     (.end)))
 
-(defn game-mode-string [mode] (mode {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)"}))
+(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)"})
 
 (defn draw-hud [shape-renderer camera font sprite-batch state]
   (let [{red-score :red green-score :green} (:score state)

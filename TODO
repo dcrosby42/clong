@@ -1,12 +1,12 @@
 Features:
 
-- Delay ball instantiation and launch until Enter
+- Fire bullets from paddles
 - Light randomization of initial ball launch
+/ Delay ball instantiation and launch until Enter
 / Deflect off ceiling and floor
 / Count score when goal is struck
 / Display score counter
 / Pause on space
-- Fire bullets from paddles
 
 Tech:
 - Bring "graph" plumbing library in
