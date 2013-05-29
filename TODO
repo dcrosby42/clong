@@ -19,5 +19,5 @@ Smells:
 - Paused and Ready state repeat the update-mode logic
 - Paused/playing/ready updaters all call the same update-mode function, which then branches internally on state
   -> seems like there could be a more cause-effect relationship
-
+- controller-mapping is a global valuer referenced from several tier2 update functions 
 

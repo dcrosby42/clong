@@ -109,9 +109,11 @@
 
 (def controller-mapping
   {:red-paddle   {:up   [:held Input$Keys/W]
-                  :down [:held Input$Keys/S]}
+                  :down [:held Input$Keys/S]
+                  :shoot [:pressed Input$Keys/E]}
    :green-paddle {:up   [:held Input$Keys/UP]
-                  :down [:held Input$Keys/DOWN]}
+                  :down [:held Input$Keys/DOWN]
+                  :shoot [:pressed Input$Keys/PERIOD]}
    :master       {:start [:pressed Input$Keys/ENTER]
                   :pause [:pressed Input$Keys/SPACE]}
    })
@@ -120,22 +122,29 @@
 
 (defn resolve-control [input [action key-code]]
   (contains? (action input) key-code))
+
+(defn resolve-controls [input ctrl-defs]
+  (vmap (fn [k v] (resolve-control input v)) ctrl-defs))
+
+(defn get-controls-for [input ctrl-map id]
+  (resolve-controls input (get ctrl-map id)))
   
 (defn bool-to-int [b] (if b 1 0))
 
 (defn update-paddle-velocity [ctrl-map paddle input]
-  (if-let [ctrl-defs  ((:id paddle) ctrl-map)]
-    (let [controls (vmap (fn [k v] (bool-to-int (resolve-control input v))) ctrl-defs)
+    (let [controls (vmap (fn [k v] (bool-to-int v)) (resolve-controls input (get ctrl-map (:id paddle))))
           y        (- (* 10 (:up controls)) (* 10 (:down controls)))]
-      [0 y])))
+      [0 y]))
 
-(defn update-paddle [paddle input]
+(defn update-paddle [paddle input ctrl-map]
   (let [{[x y] :position} paddle
-        [dx dy] (update-paddle-velocity controller-mapping paddle input)
-
+        [dx dy] (update-paddle-velocity ctrl-map paddle input)
         new-y (clamp 0 270 (+ y dy))
+        pad1 (assoc paddle :position [x new-y])
+        
+
         ]
-    (assoc paddle :position [x new-y])))
+    pad1))
 
 (defn to-tlbr [{[x y] :position [w h] :size}]
   [(+ y h) x y (+ x w)])
@@ -205,8 +214,8 @@
     score))
 
 
-(defn update-mode [state input]
-    (let [controls (vmap (fn [k v] (resolve-control input v)) (:master controller-mapping))
+(defn update-mode [state input ctrl-map]
+    (let [controls (resolve-controls input (:master ctrl-map))
           {mode :mode} state
           ]
       (if (:pause controls)
@@ -228,9 +237,9 @@
         score-event (:goal-scored-by uball)
         uscore (if score-event (score-hit uball score) score)
         ;uball1 (if score-event (new-ball) uball)
-        umode (if score-event :scored (update-mode state input))
-        ured (update-paddle red input)
-        ugreen (update-paddle green input)
+        umode (if score-event :scored (update-mode state input controller-mapping))
+        ured (update-paddle red input controller-mapping)
+        ugreen (update-paddle green input controller-mapping)
         ]
     (assoc state 
            :red-paddle ured 
@@ -254,16 +263,16 @@
 (def transition-to-scored default-transition)
 
 (defn update-state-ready [state dt input] 
-  (let [umode (update-mode state input)]
+  (let [umode (update-mode state input controller-mapping)]
     (assoc state :mode umode)))
 
 (defn update-state-paused [state dt input] 
-  (let [umode (update-mode state input)]
+  (let [umode (update-mode state input controller-mapping)]
     (assoc state :mode umode)
   ))
 
 (defn update-state-scored [state dt input] 
-  (let [umode (update-mode state input)]
+  (let [umode (update-mode state input controller-mapping)]
     (assoc state :mode umode)
   ))
 
@@ -395,13 +404,15 @@
 (def base-state 
   {
    :mode :ready
-   :red-paddle   (new-red-paddle)
-   :green-paddle (new-green-paddle)
-   :ball (new-ball)
    :bounds [320 0 0 480] ; t l b r
    :goals [ { :id :red-goal, :scorer-for :green, :body { :position [-20 0] :size [20 320] } }
             { :id :green-goal, :scorer-for :red, :body { :position [480 0] :size [20 320] } } ]
    :score { :red 0 :green 0 }
+
+   :red-paddle   (new-red-paddle)
+   :green-paddle (new-green-paddle)
+   :ball (new-ball)
+   :lasers []
    })
 
 
