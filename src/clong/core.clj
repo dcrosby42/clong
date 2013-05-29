@@ -131,20 +131,47 @@
   
 (defn bool-to-int [b] (if b 1 0))
 
-(defn update-paddle-velocity [ctrl-map paddle input]
-    (let [controls (vmap (fn [k v] (bool-to-int v)) (resolve-controls input (get ctrl-map (:id paddle))))
-          y        (- (* 10 (:up controls)) (* 10 (:down controls)))]
+(defn update-paddle-velocity [paddle controls]
+    (let [y (- (* 10 (bool-to-int (:up controls))) (* 10 (bool-to-int (:down controls))))]
       [0 y]))
+
+(defn fire-paddle-laser [paddle controls]
+  (if (:shoot controls)
+    (let [{[paddle-x paddle-y] :position paddle-id :id} paddle
+          x (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
+          y (+ paddle-y 48)
+          dx ((:id paddle) {:red-paddle 20 :green-paddle -20})
+          laser {:velocity [dx 0] :size [36 6] :position [x y] :owner (:id paddle) :color [1 0.7 0.7 0.5] :ttl 1.5}]
+      (assoc paddle :fire-laser laser))
+    (dissoc paddle :fire-laser)))
+
+(defn still-ttl [x] (> (:ttl x) 0))
+
+(defn add-fired-lasers [lasers paddles]
+  (let [ulasers (filter still-ttl lasers)
+        new-lasers (keep identity (map :fire-laser paddles))]
+    (concat ulasers new-lasers)))
+
+(defn update-laser [dt laser]
+  (let [{[x y] :position [w h] :size [dx dy] :velocity ttl :ttl} laser
+        uposition [(+ x dx)  (+ y dy)]
+        uttl      (- ttl dt)
+        ]
+    (assoc laser 
+           :position uposition 
+           :ttl uttl)))
 
 (defn update-paddle [paddle input ctrl-map]
   (let [{[x y] :position} paddle
-        [dx dy] (update-paddle-velocity ctrl-map paddle input)
+        controls  (resolve-controls input (get ctrl-map (:id paddle)))
+        [dx dy] (update-paddle-velocity paddle controls)
         new-y (clamp 0 270 (+ y dy))
         pad1 (assoc paddle :position [x new-y])
-        
 
+        pad2 (fire-paddle-laser pad1 controls)
         ]
-    pad1))
+    pad2))
+
 
 (defn to-tlbr [{[x y] :position [w h] :size}]
   [(+ y h) x y (+ x w)])
@@ -231,8 +258,9 @@
           mode))))
 
 
+
 (defn update-state-playing [state dt input] 
-  (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score}  state
+  (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score lasers :lasers}  state
         uball (update-ball ball dt [red green] goals bounds)
         score-event (:goal-scored-by uball)
         uscore (if score-event (score-hit uball score) score)
@@ -240,6 +268,9 @@
         umode (if score-event :scored (update-mode state input controller-mapping))
         ured (update-paddle red input controller-mapping)
         ugreen (update-paddle green input controller-mapping)
+
+        ulasers (map #(update-laser dt %1) lasers)
+        ulasers1 (add-fired-lasers ulasers [ured ugreen])
         ]
     (assoc state 
            :red-paddle ured 
@@ -247,6 +278,7 @@
            :ball uball
            :score uscore
            :mode umode
+           :lasers ulasers1
            )
   ))
 
@@ -256,7 +288,9 @@
     (assoc state 
            :ball (new-ball)
            :red-paddle (new-red-paddle)
-           :green-paddle (new-green-paddle)))
+           :green-paddle (new-green-paddle)
+           :lasers []
+           ))
 
 (def transition-to-playing default-transition)
 (def transition-to-paused default-transition)
@@ -327,10 +361,12 @@
 (defn draw-level [shape-renderer camera font sprite-batch state]
 
   ;; Draw block shapes:
-  (doall(map 
-          (comp (partial draw-block shape-renderer) state) 
-          [:red-paddle :green-paddle :ball]))
-  
+  (let [stuff (map (partial get state) [:red-paddle :green-paddle :ball])
+        projectiles (get state :lasers)
+        blocks (concat stuff projectiles)]
+    (doall
+      (map (partial draw-block shape-renderer) blocks)))
+
   ;; Scores etc
   (draw-hud shape-renderer camera font sprite-batch state)
   )

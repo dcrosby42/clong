@@ -1,6 +1,8 @@
 Features:
 
-- Fire bullets from paddles
+/ Fire lasers from paddles
+- Make lasers do something to enemy paddle
+- Make lasers do something to enemy ball
 - Effect on paddle strike
 - Effect on wall strike
 - Effect on goal strike
@@ -16,6 +18,20 @@ Tech:
 - Collision detection should be outside the specific upater for ball?
 
 Smells:
+- UGH: fire laser
+  Firing control knowledge is hiding inside update-paddle, but that function returns a paddle.  
+  OPTION 1: set temp state on the paddle, indicating a laser should be fired, and rely on a subsequent function to:
+    - detect the laser
+    - add it to the appropriate lasers list in the game state
+    - clear that temp state out of the paddle.
+    X nasty?  This requires, eg, update-state-playing to weave a pipeline of paddle mods in its let statement.
+    WENT WITH THIS OPTION
+  
+  OPTION 2: let something else detect the firing
+    - DON'T do the detection / laser creation in update-paddle
+    x ergh... the extraction of controls would be repeated outside the update-paddle func somewhere polluting.
+
+      
 - Paused and Ready state repeat the update-mode logic
 - Paused/playing/ready updaters all call the same update-mode function, which then branches internally on state
   -> seems like there could be a more cause-effect relationship
