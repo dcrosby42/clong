@@ -270,6 +270,8 @@
     (.rect x y w h)
     (.end)))
 
+(defn game-mode-string [mode] (mode {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)"}))
+
 (defn draw-hud [shape-renderer camera font sprite-batch state]
   (let [{red-score :red green-score :green} (:score state)
         {game-mode :mode} state
@@ -279,7 +281,7 @@
 
     (.draw font sprite-batch (str "Red: " red-score) 20 20)
     (.draw font sprite-batch (str "Green: " green-score) 400 20)
-    (.draw font sprite-batch (str game-mode) 220 20)
+    (.draw font sprite-batch ((:mode state) game-mode-strings) 220 20)
 
     (.end sprite-batch)
     ))
