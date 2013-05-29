@@ -1,6 +1,9 @@
 Features:
 
 - Fire bullets from paddles
+- Effect on paddle strike
+- Effect on wall strike
+- Effect on goal strike
 - Light randomization of initial ball launch
 / Delay ball instantiation and launch until Enter
 / Deflect off ceiling and floor

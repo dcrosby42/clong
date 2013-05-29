@@ -98,6 +98,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 30]})
+(defn new-red-paddle [] {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]})
+(defn new-green-paddle []  {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]})
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -215,24 +217,25 @@
         (if (:start controls)
           (case mode
             :ready :playing
+            :scored :ready
             mode)
           mode))))
 
 
 (defn update-state-playing [state dt input] 
   (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score}  state
+        uball (update-ball ball dt [red green] goals bounds)
+        score-event (:goal-scored-by uball)
+        uscore (if score-event (score-hit uball score) score)
+        ;uball1 (if score-event (new-ball) uball)
+        umode (if score-event :scored (update-mode state input))
         ured (update-paddle red input)
         ugreen (update-paddle green input)
-        uball (if (<= ((:position ball) 0) 485) (update-ball ball dt [red green] goals bounds) ball)
-        score-event (if (:goal-scored-by uball) true false)
-        uscore (if score-event (score-hit uball score) score)
-        uball1 (if score-event (new-ball) uball)
-        umode (if score-event :ready (update-mode state input))
         ]
     (assoc state 
            :red-paddle ured 
            :green-paddle ugreen 
-           :ball uball1
+           :ball uball
            :score uscore
            :mode umode
            )
@@ -240,10 +243,20 @@
 
 (defn update-state-ready [state dt input] 
   (let [umode (update-mode state input)]
-    (assoc state :mode umode)
+    (assoc state 
+           :mode umode
+           :ball (new-ball)
+           :red-paddle (new-red-paddle)
+           :green-paddle (new-green-paddle)
+           )
   ))
 
 (defn update-state-paused [state dt input] 
+  (let [umode (update-mode state input)]
+    (assoc state :mode umode)
+  ))
+
+(defn update-state-scored [state dt input] 
   (let [umode (update-mode state input)]
     (assoc state :mode umode)
   ))
@@ -253,6 +266,7 @@
     :ready (update-state-ready state dt input)
     :playing (update-state-playing state dt input)
     :paused (update-state-paused state dt input)
+    :scored (update-state-scored state dt input)
     state
     )
 )
@@ -270,7 +284,7 @@
     (.rect x y w h)
     (.end)))
 
-(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)"})
+(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
 
 (defn draw-hud [shape-renderer camera font sprite-batch state]
   (let [{red-score :red green-score :green} (:score state)
@@ -367,8 +381,8 @@
 (def base-state 
   {
    :mode :ready
-   :red-paddle   {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]}
-   :green-paddle {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]}
+   :red-paddle   (new-red-paddle)
+   :green-paddle (new-green-paddle)
    :ball (new-ball)
    :bounds [320 0 0 480] ; t l b r
    :goals [ { :id :red-goal, :scorer-for :green, :body { :position [-20 0] :size [20 320] } }
