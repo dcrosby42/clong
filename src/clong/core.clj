@@ -19,6 +19,12 @@
 (defn clamp [lo hi v] 
   (if (< v lo) lo (if (> v hi) hi v)))
 
+(def reject-nils (partial keep identity))
+
+(defn btw [lo hi x] (and (>= x lo) (<= x hi)))
+
+(defn find-by [maps k v] (first (filter #(= v (get %1 k)) maps)))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; LIBGDX UTILS
@@ -132,7 +138,8 @@
 (defn bool-to-int [b] (if b 1 0))
 
 (defn update-paddle-velocity [paddle controls]
-    (let [y (- (* 10 (bool-to-int (:up controls))) (* 10 (bool-to-int (:down controls))))]
+    (let [speed (if (:slow-effect paddle) 3 10)
+          y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
       [0 y]))
 
 (defn fire-paddle-laser [paddle controls]
@@ -140,17 +147,26 @@
     (let [{[paddle-x paddle-y] :position paddle-id :id} paddle
           x (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
           y (+ paddle-y 48)
-          dx ((:id paddle) {:red-paddle 20 :green-paddle -20})
-          laser {:velocity [dx 0] :size [36 6] :position [x y] :owner (:id paddle) :color [1 0.7 0.7 0.5] :ttl 1.5}]
-      (assoc paddle :fire-laser laser))
+          [speed color] ((:id paddle) {:red-paddle   [20  [1 0.7 0.7 0.5]] 
+                                       :green-paddle [-20 [0.7 1 0.7 0.5]]})
+          laser-gesture {:speed speed :position [x y] :owner (:id paddle) :color color}]
+      (assoc paddle :fire-laser laser-gesture))
     (dissoc paddle :fire-laser)))
 
 (defn still-ttl [x] (> (:ttl x) 0))
 
-(defn add-fired-lasers [lasers paddles]
-  (let [ulasers (filter still-ttl lasers)
-        new-lasers (keep identity (map :fire-laser paddles))]
-    (concat ulasers new-lasers)))
+(defn gesture-to-laser [laser-gesture]
+  (let [base (select-keys laser-gesture [:position :owner :color])
+        {speed :speed} laser-gesture]
+    (assoc base
+           :velocity [speed 0]
+           :size [36 6]
+           :ttl 1.5)))
+
+(defn add-new-lasers [paddles lasers]
+  (let [gestures (map :fire-laser paddles)]
+    (concat lasers 
+            (map gesture-to-laser (reject-nils gestures)))))
 
 (defn update-laser [dt laser]
   (let [{[x y] :position [w h] :size [dx dy] :velocity ttl :ttl} laser
@@ -161,12 +177,20 @@
            :position uposition 
            :ttl uttl)))
 
-(defn update-paddle [paddle input ctrl-map]
+(defn update-paddle-slow-effect [paddle dt]
+  (if-let [effect (:slow-effect paddle)]
+    (if (< (:ttl effect) 0)
+      (dissoc paddle :slow-effect)
+      (update-in paddle [:slow-effect :ttl] #(- %1 dt)))
+    paddle))
+
+(defn update-paddle [paddle input ctrl-map dt]
   (let [{[x y] :position} paddle
         controls  (resolve-controls input (get ctrl-map (:id paddle)))
-        [dx dy] (update-paddle-velocity paddle controls)
+        pad0 (update-paddle-slow-effect paddle dt)
+        [dx dy] (update-paddle-velocity pad0 controls)
         new-y (clamp 0 270 (+ y dy))
-        pad1 (assoc paddle :position [x new-y])
+        pad1 (assoc pad0 :position [x new-y])
 
         pad2 (fire-paddle-laser pad1 controls)
         ]
@@ -179,17 +203,17 @@
 (defn to-pts [[t l b r]]
   [[l t] [r t] [l b] [r b]])
 
-(defn contains-pt [[t l b r] [x y]]
+(defn contains-pt? [[t l b r] [x y]]
   (and (> x l) (< x r) (> y b) (< y t)))
 
 (defn box-piercing-box? [smaller larger]
   (let [pts (to-pts smaller)]
-    (some #(contains-pt larger %1) pts)))
+    (some #(contains-pt? larger %1) pts)))
 
 (defn ball-collide-paddle? [ball paddle]
   (let [box (to-tlbr paddle)
         pts (to-pts (to-tlbr ball))]
-    (some #(contains-pt box %1) pts)))
+    (some #(contains-pt? box %1) pts)))
 
   
 (defn handle-ball-paddle-collision [ball]
@@ -258,27 +282,58 @@
           mode))))
 
 
+(defn laser-strikes-paddle? [laser paddle]
+  (box-piercing-box? (to-tlbr laser) (to-tlbr paddle)))
+
+(defn collide-lasers-paddles [lasers paddles] nil)
+
+(defn laser-paddle-hits [lasers paddles]
+  (for [laser lasers, paddle paddles
+        :when (and (laser-strikes-paddle? laser paddle) 
+                   (not (= (:owner laser) (:id paddle))))]
+    [laser paddle]))
+
+(defn apply-slow-effect-to-paddle [paddle]
+  (assoc paddle :slow-effect {:ttl 1.0}))
+
+(defn apply-slow-effect-to-paddles [hit-paddles red green]
+  (let [updated (map apply-slow-effect-to-paddle hit-paddles)
+        _ (if (not (empty? updated)) (println "slowed paddles:" updated))
+        ured (or (find-by updated :id :red-paddle) red)
+        ugreen (or (find-by updated :id :green-paddle) green)]
+    [ured ugreen]))
+
 
 (defn update-state-playing [state dt input] 
   (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score lasers :lasers}  state
         uball (update-ball ball dt [red green] goals bounds)
         score-event (:goal-scored-by uball)
         uscore (if score-event (score-hit uball score) score)
-        ;uball1 (if score-event (new-ball) uball)
         umode (if score-event :scored (update-mode state input controller-mapping))
-        ured (update-paddle red input controller-mapping)
-        ugreen (update-paddle green input controller-mapping)
+        ured (update-paddle red input controller-mapping dt)
+        ugreen (update-paddle green input controller-mapping dt)
 
-        ulasers (map #(update-laser dt %1) lasers)
-        ulasers1 (add-fired-lasers ulasers [ured ugreen])
+        ulasers (filter still-ttl (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
+        ulasers1 (add-new-lasers [ured ugreen] ulasers)
+
+        ; collision detection
+        hits (laser-paddle-hits ulasers1 [ured ugreen])
+        ; drop impacting lasers:
+        ulasers2 (let [done-lasers (map first hits)]
+                   (if (not (empty? done-lasers)) (println hits))
+                   (remove (fn [l] (some #{l} done-lasers)) ulasers1))
+        ; slow the hit paddles:
+        [ured1 ugreen1] (apply-slow-effect-to-paddles (map second hits) ured ugreen)
+
+
         ]
     (assoc state 
-           :red-paddle ured 
-           :green-paddle ugreen 
+           :red-paddle ured1
+           :green-paddle ugreen1
            :ball uball
            :score uscore
            :mode umode
-           :lasers ulasers1
+           :lasers ulasers2
            )
   ))
 
