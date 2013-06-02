@@ -1,7 +1,7 @@
 Features:
 
 / Fire lasers from paddles
-- Make lasers do something to enemy paddle
+/ Make lasers do something to enemy paddle
 - Make lasers do something to enemy ball
 - Effect on paddle strike
 - Effect on wall strike
@@ -33,7 +33,10 @@ Smells:
 
   OPTION 3: update-paddle (and other similar funcs) return an updated target + side effects
 
-      
+- UGH! Laser / paddle collision detection and handling
+  Lots of intertwined knowledge
+  Had to update lots of other code (such as update-paddle) to accomodate the slow-down effect
+
 - Paused and Ready state repeat the update-mode logic
 - Paused/playing/ready updaters all call the same update-mode function, which then branches internally on state
   -> seems like there could be a more cause-effect relationship
