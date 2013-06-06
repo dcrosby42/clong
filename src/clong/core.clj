@@ -102,10 +102,26 @@
 ;; INITIALIZE
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def red-laser-color [1 0.7 0.7 0.5])
+(def green-laser-color [0.7 1 0.7 0.5])
 
 (defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 30]})
 (defn new-red-paddle [] {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]})
 (defn new-green-paddle []  {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]})
+
+(defn new-explosion [opts]
+  (let [position (or (:position opts) [0 0])
+        color    (or (:color opts) [1 1 1 1])
+        base {:position position :size [10 10] :size-change [-8 -8] :color color :velocity [-100 200] :accel [0 -600]}
+        opts (merge {:ttl 0.8 
+                     ;:position position
+                     :particles [(assoc base :velocity [100 200])
+                                 (assoc base :velocity [-100 200])
+                                 (assoc base :velocity [20 0])
+                                 (assoc base :velocity [-50 300])]
+                     } opts)]
+    opts))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -121,7 +137,9 @@
                   :down [:held Input$Keys/DOWN]
                   :shoot [:pressed Input$Keys/PERIOD]}
    :master       {:start [:pressed Input$Keys/ENTER]
-                  :pause [:pressed Input$Keys/SPACE]}
+                  :pause [:pressed Input$Keys/SPACE]
+                  :test  [:pressed Input$Keys/T]
+                  }
    })
 
 (def held-key-watch-list (map #(get %1 1) (mapcat vals (vals controller-mapping))))
@@ -145,15 +163,16 @@
 (defn fire-paddle-laser [paddle controls]
   (if (:shoot controls)
     (let [{[paddle-x paddle-y] :position paddle-id :id} paddle
-          x (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
-          y (+ paddle-y 48)
-          [speed color] ((:id paddle) {:red-paddle   [20  [1 0.7 0.7 0.5]] 
-                                       :green-paddle [-20 [0.7 1 0.7 0.5]]})
+          x         (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
+          y         (+ paddle-y 48)
+          paddle-id (:id paddle)
+          speed     (if (= :red-paddle paddle-id) 20 -20)
+          color     (if (= :red-paddle paddle-id) red-laser-color green-laser-color)
           laser-gesture {:speed speed :position [x y] :owner (:id paddle) :color color}]
       (assoc paddle :fire-laser laser-gesture))
     (dissoc paddle :fire-laser)))
 
-(defn still-ttl [x] (> (:ttl x) 0))
+(defn still-ttl? [x] (> (:ttl x) 0))
 
 (defn gesture-to-laser [laser-gesture]
   (let [base (select-keys laser-gesture [:position :owner :color])
@@ -164,9 +183,9 @@
            :ttl 1.5)))
 
 (defn add-new-lasers [paddles lasers]
-  (let [gestures (map :fire-laser paddles)]
+  (let [gestures (reject-nils (map :fire-laser paddles))]
     (concat lasers 
-            (map gesture-to-laser (reject-nils gestures)))))
+            (map gesture-to-laser gestures))))
 
 (defn update-laser [dt laser]
   (let [{[x y] :position [w h] :size [dx dy] :velocity ttl :ttl} laser
@@ -228,10 +247,21 @@
     (assoc ball :velocity vel1)))
 
 
-(defn move-ball [dt ball]
-  (let [{[x y] :position vel :velocity} ball
-        dest [(+ (* dt (vel 0)) x) (+ (* dt (vel 1)) y)]]
-    (assoc ball :position dest)))
+(defn update-velocity [dt {[dx dy] :velocity [ax ay] :accel :as mover}]
+  (assoc mover :velocity [(+ dx (* dt ax)) 
+                          (+ dy (* dt ay))]))
+
+;(defn update-position [dt mover]
+;  (let [{[x y] :position [dx dy] :velocity} mover
+;        dest [(+ (* dt dx) x) (+ (* dt dy) y)]]
+;    (assoc mover :position dest)))
+(defn update-position [dt {[x y] :position [dx dy] :velocity :as mover}]
+  (assoc mover :position [(+ x (* dt dx))
+                          (+ y (* dt dy))]))
+
+(defn update-size [dt {[w h] :size [dw dh] :size-change :as box}]
+  (assoc box :size [(+ w (* dt dw)) 
+                    (+ h (* dt dh))]))
 
 (defn collide-ball-paddles [paddles ball]
   (if (some #(ball-collide-paddle? ball %1) paddles)
@@ -258,7 +288,7 @@
   (detect-goal goals 
              (collide-ball-top-bottom screen-bounds 
                                       (collide-ball-paddles paddles
-                                                            (move-ball dt ball)))))
+                                                            (update-position dt ball)))))
 (defn score-hit [ball score]
   (if-let [player (:goal-scored-by ball)]
     (assoc score player (+ 1 (get score player)))
@@ -285,8 +315,6 @@
 (defn laser-strikes-paddle? [laser paddle]
   (box-piercing-box? (to-tlbr laser) (to-tlbr paddle)))
 
-(defn collide-lasers-paddles [lasers paddles] nil)
-
 (defn laser-paddle-hits [lasers paddles]
   (for [laser lasers, paddle paddles
         :when (and (laser-strikes-paddle? laser paddle) 
@@ -298,14 +326,36 @@
 
 (defn apply-slow-effect-to-paddles [hit-paddles red green]
   (let [updated (map apply-slow-effect-to-paddle hit-paddles)
-        _ (if (not (empty? updated)) (println "slowed paddles:" updated))
+        ;_ (if (not (empty? updated)) (println "slowed paddles:" updated))
         ured (or (find-by updated :id :red-paddle) red)
         ugreen (or (find-by updated :id :green-paddle) green)]
     [ured ugreen]))
 
+(defn create-explosions [controls]
+  (if (:test controls)
+    [(new-explosion {:position [320 120]})]
+    []))
+
+(defn update-explosion-particle [dt particle]
+  (let [
+        particle1 (update-position dt (update-velocity dt (update-size dt particle)))]
+    particle1))
+
+(defn update-explosion [{ttl :ttl, particles :particles :as explosion} dt]
+  (let []
+    (assoc explosion 
+           :particles (map (partial update-explosion-particle dt) particles)
+           :ttl (- ttl dt))))
+
+
+(defn update-explosions [explosions dt]
+  (filter still-ttl? 
+          (reject-nils 
+            (map #(update-explosion %1 dt) 
+                 explosions))))
 
 (defn update-state-playing [state dt input] 
-  (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score lasers :lasers}  state
+  (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score lasers :lasers explosions :explosions}  state
         uball (update-ball ball dt [red green] goals bounds)
         score-event (:goal-scored-by uball)
         uscore (if score-event (score-hit uball score) score)
@@ -313,19 +363,28 @@
         ured (update-paddle red input controller-mapping dt)
         ugreen (update-paddle green input controller-mapping dt)
 
-        ulasers (filter still-ttl (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
+        ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
         ulasers1 (add-new-lasers [ured ugreen] ulasers)
 
         ; collision detection
         hits (laser-paddle-hits ulasers1 [ured ugreen])
         ; drop impacting lasers:
         ulasers2 (let [done-lasers (map first hits)]
-                   (if (not (empty? done-lasers)) (println hits))
+                   ;(if (not (empty done-lasers)) (println hits))
                    (remove (fn [l] (some #{l} done-lasers)) ulasers1))
         ; slow the hit paddles:
         [ured1 ugreen1] (apply-slow-effect-to-paddles (map second hits) ured ugreen)
 
 
+        ;; test explosion effect
+        new-explosions (map (fn [{owner :owner :as laser}] 
+                              (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
+                                (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
+                            (map first hits))
+        ;test-explosions (create-explosions (get-controls-for input controller-mapping :master))
+        ;explosions1 (concat explosions test-explosions new-explosions)
+        explosions1 (concat explosions new-explosions)
+        explosions2 (update-explosions explosions1 dt)
         ]
     (assoc state 
            :red-paddle ured1
@@ -334,6 +393,7 @@
            :score uscore
            :mode umode
            :lasers ulasers2
+           :explosions explosions2
            )
   ))
 
@@ -418,7 +478,8 @@
   ;; Draw block shapes:
   (let [stuff (map (partial get state) [:red-paddle :green-paddle :ball])
         projectiles (get state :lasers)
-        blocks (concat stuff projectiles)]
+        explosions (mapcat :particles (get state :explosions))
+        blocks (concat stuff projectiles explosions)]
     (doall
       (map (partial draw-block shape-renderer) blocks)))
 
@@ -504,6 +565,7 @@
    :green-paddle (new-green-paddle)
    :ball (new-ball)
    :lasers []
+   :explosions []
    })
 
 
