@@ -1,101 +1,18 @@
 (ns clong.core
   (:gen-class)
-  (:import (com.badlogic.gdx Gdx ApplicationListener Input Input$Keys InputAdapter Game Screen)
+  (:require 
+     [clong.utils :refer :all]
+     [clong.gdx-helpers :as gh]
+     [clong.input :as in]
+      )
+  (:import 
+     (com.badlogic.gdx Gdx Input$Keys Screen)
      (com.badlogic.gdx.graphics GL10 Mesh VertexAttribute OrthographicCamera)
      (com.badlogic.gdx.graphics.g2d SpriteBatch BitmapFont)
      (com.badlogic.gdx.graphics.glutils ShapeRenderer ShapeRenderer$ShapeType)
-     (com.badlogic.gdx.backends.lwjgl LwjglApplication)))
+     (com.badlogic.gdx.backends.lwjgl LwjglApplication)
+     ))
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; GENERAL UTILS
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn vmap [f m] 
-  (apply array-map (flatten (map (fn [[k v]] [k (f k v)]) m))))
-
-(defn clamp [lo hi v] 
-  (if (< v lo) lo (if (> v hi) hi v)))
-
-(def reject-nils (partial keep identity))
-
-(defn btw [lo hi x] (and (>= x lo) (<= x hi)))
-
-(defn find-by [maps k v] (first (filter #(= v (get %1 k)) maps)))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; LIBGDX UTILS
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defn ez-screen [opts]
-  (let [opts (merge {:show    (fn [])
-                     :render  (fn [dt] ) 
-                     :resize  (fn [w,h] )
-                     :hide    (fn [])
-                     :pause   (fn [])
-                     :resume  (fn [])
-                     :dispose (fn [])} opts)
-        
-        ]
-    (let [broken (ref false)]
-      (proxy [Screen] []
-        (show [] 
-          (do
-            (.glClear Gdx/gl GL10/GL_COLOR_BUFFER_BIT)
-            (if (not @broken)
-              (try 
-                ((:show opts))
-                (catch Throwable th (do 
-                                      (dosync (ref-set broken true))
-                                      (println "SHOW ERROR!" th)(.printStackTrace th)))))))
-        (render [dt] 
-          (do
-            (.glClear Gdx/gl GL10/GL_COLOR_BUFFER_BIT)
-            (if (not @broken)
-              (try 
-                ((:render opts) dt)
-                (catch Throwable th (do 
-                                      (dosync (ref-set broken true))
-                                      (println "RENDER ERROR!" th)(.printStackTrace th)))))))
-
-        (resize [w,h] ((:resize opts) w h))
-        (hide [] ((:hide opts)))
-        (pause [] ((:pause opts)))
-        (resume [] ((:pause opts)))
-        (dispose [] ((:pause opts)))))))
-
-(def blank-screen (ez-screen {}))
-
-(defn ez-game []
-  (proxy [Game] []
-    (create [] (.setScreen this blank-screen))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; INPUT
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def key-input-events { :pressed #{}, :released #{}, :typed #{}, :held #{}})
-(defn add-keycode-to [kies k code] (assoc kies k (conj (kies k) code)))
-;(defn key-code? [kies k c] (contains? (kies k) c))
-;(defn key-down? [kies code] 
-
-(defn my-input-processor [kies-ref]
-  (proxy [InputAdapter] []
-    (keyDown [keycode] (dosync (alter kies-ref add-keycode-to :pressed keycode)) true)
-    (keyUp [keycode] (dosync (alter kies-ref add-keycode-to :released keycode)) true)
-    (keyTyped [ch] (dosync (alter kies-ref add-keycode-to :typed ch)) true)))
-
-(defn is-key-down? [k]
-  (.isKeyPressed Gdx/input k))
-
-(defn read-held-keys [watch-list]
-  (into #{} (doall (filter is-key-down? watch-list))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -125,7 +42,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
-;; UPDATE
+;; CONTROLS
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -150,10 +67,11 @@
 (defn resolve-controls [input ctrl-defs]
   (vmap (fn [k v] (resolve-control input v)) ctrl-defs))
 
-(defn get-controls-for [input ctrl-map id]
-  (resolve-controls input (get ctrl-map id)))
-  
-(defn bool-to-int [b] (if b 1 0))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; UPDATE
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn update-paddle-velocity [paddle controls]
     (let [speed (if (:slow-effect paddle) 3 10)
@@ -216,7 +134,7 @@
     pad2))
 
 
-(defn to-tlbr [{[x y] :position [w h] :size}]
+(defn to-box [{[x y] :position [w h] :size}]
   [(+ y h) x y (+ x w)])
 
 (defn to-pts [[t l b r]]
@@ -230,8 +148,8 @@
     (some #(contains-pt? larger %1) pts)))
 
 (defn ball-collide-paddle? [ball paddle]
-  (let [box (to-tlbr paddle)
-        pts (to-pts (to-tlbr ball))]
+  (let [box (to-box paddle)
+        pts (to-pts (to-box ball))]
     (some #(contains-pt? box %1) pts)))
 
   
@@ -276,7 +194,7 @@
       ball)))
 
 (defn first-overlapping-goal [goals ball]
-  (first (drop-while (fn [goal] (not (box-piercing-box? (to-tlbr ball) (to-tlbr (:body goal))))) goals)))
+  (first (drop-while (fn [goal] (not (box-piercing-box? (to-box ball) (to-box (:body goal))))) goals)))
 
 
 (defn detect-goal [goals ball]
@@ -313,7 +231,7 @@
 
 
 (defn laser-strikes-paddle? [laser paddle]
-  (box-piercing-box? (to-tlbr laser) (to-tlbr paddle)))
+  (box-piercing-box? (to-box laser) (to-box paddle)))
 
 (defn laser-paddle-hits [lasers paddles]
   (for [laser lasers, paddle paddles
@@ -355,7 +273,14 @@
                  explosions))))
 
 (defn update-state-playing [state dt input] 
-  (let [{red :red-paddle green :green-paddle ball :ball goals :goals bounds :bounds score :score lasers :lasers explosions :explosions}  state
+  (let [{red :red-paddle 
+         green :green-paddle 
+         ball :ball 
+         goals :goals 
+         bounds :bounds 
+         score :score 
+         lasers :lasers 
+         explosions :explosions}  state
         uball (update-ball ball dt [red green] goals bounds)
         score-event (:goal-scored-by uball)
         uscore (if score-event (score-hit uball score) score)
@@ -476,10 +401,10 @@
 (defn draw-level [shape-renderer camera font sprite-batch state]
 
   ;; Draw block shapes:
-  (let [stuff (map (partial get state) [:red-paddle :green-paddle :ball])
+  (let [things (map (partial get state) [:red-paddle :green-paddle :ball])
         projectiles (get state :lasers)
         explosions (mapcat :particles (get state :explosions))
-        blocks (concat stuff projectiles explosions)]
+        blocks (concat things projectiles explosions)]
     (doall
       (map (partial draw-block shape-renderer) blocks)))
 
@@ -494,13 +419,6 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn ortho-cam [screen-w screen-h]
-  (let [camera (OrthographicCamera.)]
-    (set! (. camera viewportHeight) screen-h)
-    (set! (. camera viewportWidth) screen-w)
-    (.set (.position camera) (* 0.5 screen-w) (* 0.5 screen-h) 0)
-    (.update camera)
-    camera))
 
 
 (defn sandbox-screen [state stuff]
@@ -508,14 +426,14 @@
         camera (ref nil)
         font (ref nil)
         sprite-batch (ref nil)
-        input-events (ref key-input-events)
-        input-processor (my-input-processor input-events)
-        next-input (fn [] (assoc @input-events :held (read-held-keys held-key-watch-list)))
+        input-events (ref in/key-input-events)
+        input-processor (in/input-processor input-events)
+        next-input (fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
         ]
-    (ez-screen 
+    (gh/ez-screen 
       {:show (fn [] 
                (let [_shape-renderer (ShapeRenderer.)
-                     _camera         (ortho-cam 480 320)
+                     _camera         (gh/ortho-camera 480 320)
                      _font           (BitmapFont.)
                      _sprite-batch   (SpriteBatch.)
                      ]
@@ -528,22 +446,19 @@
                    )))
 
        :render (fn [dt]
-                  (let [input (next-input)] ;; Get input
-                    ;(if-not (= input key-input-events) (println input))
-                    ;; Update game state
-                    (dosync 
+                 (dosync 
+                    (let [input1 (next-input @input-events)            ;; Collect input
+                          state1 (alter state update-state dt input1)] ;; Update game state
+                      ;; Clear input:
+                      (ref-set input-events in/key-input-events)  
+
+                      ;; Update snapshot:
                       (alter stuff assoc 
-                             :state (alter state update-state dt input)
-                             :input input
-                             )
-                      )
-
-                    ;; Draw
-                    (draw-level @shape-renderer @camera @font @sprite-batch @state)
-
-                    ;; Clear input state
-                    (dosync (ref-set input-events key-input-events)))
-                  )
+                             :input input1
+                             :state state1)
+                      ))
+                 ;; Draw screen:
+                 (draw-level @shape-renderer @camera @font @sprite-batch @state))
        }
       )))
 
@@ -585,7 +500,7 @@
 (defn bb [] (dosync (alter state assoc :ball (new-ball))))
 
 (defn start []
-  (let [g (ez-game)
+  (let [g (gh/ez-game)
         a (LwjglApplication. g "My Application" 480 320 false)]
     (dosync (ref-set game g)
              (ref-set app a))
