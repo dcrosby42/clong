@@ -2,6 +2,7 @@
   (:gen-class)
   (:require 
      [clong.utils :refer :all]
+     [clong.box :as box]
      [clong.gdx-helpers :as gh]
      [clong.input :as in]
       )
@@ -134,23 +135,11 @@
     pad2))
 
 
-(defn to-box [{[x y] :position [w h] :size}]
-  [(+ y h) x y (+ x w)])
-
-(defn to-pts [[t l b r]]
-  [[l t] [r t] [l b] [r b]])
-
-(defn contains-pt? [[t l b r] [x y]]
-  (and (> x l) (< x r) (> y b) (< y t)))
-
-(defn box-piercing-box? [smaller larger]
-  (let [pts (to-pts smaller)]
-    (some #(contains-pt? larger %1) pts)))
 
 (defn ball-collide-paddle? [ball paddle]
-  (let [box (to-box paddle)
-        pts (to-pts (to-box ball))]
-    (some #(contains-pt? box %1) pts)))
+  (let [box (box/to-box paddle)
+        pts (box/to-pts (box/to-box ball))]
+    (some #(box/contains-pt? box %1) pts)))
 
   
 (defn handle-ball-paddle-collision [ball]
@@ -194,7 +183,7 @@
       ball)))
 
 (defn first-overlapping-goal [goals ball]
-  (first (drop-while (fn [goal] (not (box-piercing-box? (to-box ball) (to-box (:body goal))))) goals)))
+  (first (drop-while (fn [goal] (not (box/box-piercing-box? (box/to-box ball) (box/to-box (:body goal))))) goals)))
 
 
 (defn detect-goal [goals ball]
@@ -231,7 +220,7 @@
 
 
 (defn laser-strikes-paddle? [laser paddle]
-  (box-piercing-box? (to-box laser) (to-box paddle)))
+  (box/box-piercing-box? (box/to-box laser) (box/to-box paddle)))
 
 (defn laser-paddle-hits [lasers paddles]
   (for [laser lasers, paddle paddles
