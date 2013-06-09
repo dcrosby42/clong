@@ -1,7 +1,10 @@
 (ns clong.box
   )
 
-(defn to-box [{[x y] :position [w h] :size}]
+(defn to-box 
+  "Given a map with :position and :size vectors, 
+  return a vector of four values [top left bottom right]"
+  [{[x y] :position [w h] :size}]
   [(+ y h) x y (+ x w)])
 
 (defn to-pts [[t l b r]]

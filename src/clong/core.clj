@@ -516,7 +516,7 @@
              (ref-set app a))
     true))
     
-(defn rl [] (use 'clong.core :reload))
+(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.core :reload))
 
 (defn set-screen [s] (.postRunnable @app (fn [] (.setScreen @game s))))
 
