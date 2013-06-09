@@ -1,3 +1,10 @@
+Refactoring ideas:
+
+- Define game states as maps { :in :update :out }
+
+
+
+
 Features:
 
 - Light randomization of initial ball launch
@@ -16,7 +23,6 @@ Features:
 
 Tech:
 - Bring "graph" plumbing library in
-- Collision detection should be outside the specific upater for ball?
 
 Smells:
 - UGH: fire laser

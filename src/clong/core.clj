@@ -273,109 +273,120 @@
             (map #(update-explosion %1 dt) 
                  explosions))))
 
-(defn update-state-playing [state dt input] 
-  (let [{red :red-paddle 
-         green :green-paddle 
-         ball :ball 
-         goals :goals 
-         bounds :bounds 
-         score :score 
-         lasers :lasers 
-         explosions :explosions}  state
-        ball1 (update-ball ball dt [red green] goals bounds)
-        score-event (:goal-scored-by ball1)
-        uscore (if score-event (score-hit ball1 score) score)
-        umode (if score-event :scored (update-mode state input controller-mapping))
-        ured (update-paddle red input controller-mapping dt)
-        ugreen (update-paddle green input controller-mapping dt)
-
-        ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
-        ulasers1 (add-new-lasers [ured ugreen] ulasers)
-
-        ;; laser-paddle collision detection
-        l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
-        ; drop impacting lasers:
-        ulasers2 (let [done-lasers (map first l-p-hits)]
-                   (remove (fn [l] (some #{l} done-lasers)) ulasers1))
-
-        ; slow the hit paddles:
-        [ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
-
-        ;; test explosion effect
-        l-p-explosions (map (fn [{owner :owner :as laser}] 
-                              (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
-                                (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
-                            (map first l-p-hits))
-
-        l-b-hits (laser-ball-hits ulasers1 ball1)
-        ball2 (if (empty? l-b-hits) ball1 (new-ball))
-        ;_ (if-not (empty? l-b-hits) (println l-b-hits))
-        l-b-explosions (map (fn [{owner :owner :as laser}] 
-                              (new-explosion (assoc (select-keys laser [:position]) :color white)))
-                            (map first l-b-hits))
-        
-        ;test-explosions (create-explosions (get-controls-for input controller-mapping :master))
-        ;explosions1 (concat explosions test-explosions new-explosions)
-        explosions1 (concat explosions l-p-explosions l-b-explosions)
-        explosions2 (update-explosions explosions1 dt)
-
-
-        ]
-    (assoc state 
-           :red-paddle ured1
-           :green-paddle ugreen1
-           :ball ball2
-           :score uscore
-           :mode umode
-           :lasers ulasers2
-           :explosions explosions2
-           )
-  ))
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; MODES
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn default-transition [old-state state] state)
 
-(defn transition-to-ready [old-state state]
-    (assoc state 
-           :ball (new-ball)
-           :red-paddle (new-red-paddle)
-           :green-paddle (new-green-paddle)
-           :lasers []
-           ))
-
-(def transition-to-playing default-transition)
-(def transition-to-paused default-transition)
-(def transition-to-scored default-transition)
-
-(defn update-state-ready [state dt input] 
+(defn default-update [state dt input] 
   (let [umode (update-mode state input controller-mapping)]
-    (assoc state :mode umode)))
+    (assoc state :mode (update-mode state input controller-mapping))))
 
-(defn update-state-paused [state dt input] 
-  (let [umode (update-mode state input controller-mapping)]
-    (assoc state :mode umode)
-  ))
+(def base-mode
+  {:in     default-transition
+   :update default-update
+   :out    default-transition})
 
-(defn update-state-scored [state dt input] 
-  (let [umode (update-mode state input controller-mapping)]
-    (assoc state :mode umode)
-  ))
+(def ready-mode
+  (assoc base-mode
+         :in 
+         (fn [old-state state]
+           (assoc state 
+                  :ball (new-ball)
+                  :red-paddle (new-red-paddle)
+                  :green-paddle (new-green-paddle)
+                  :lasers []
+                  :explosions []))))
+
+(def playing-mode
+  (assoc base-mode
+         :update 
+         (fn [state dt input]
+           (let [{red :red-paddle 
+                  green :green-paddle 
+                  ball :ball 
+                  goals :goals 
+                  bounds :bounds 
+                  score :score 
+                  lasers :lasers 
+                  explosions :explosions}  state
+                 ball1 (update-ball ball dt [red green] goals bounds)
+                 score-event (:goal-scored-by ball1)
+                 uscore (if score-event (score-hit ball1 score) score)
+                 umode (if score-event :scored (update-mode state input controller-mapping))
+                 ured (update-paddle red input controller-mapping dt)
+                 ugreen (update-paddle green input controller-mapping dt)
+
+                 ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
+                 ulasers1 (add-new-lasers [ured ugreen] ulasers)
+
+                 ;; laser-paddle collision detection
+                 l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
+                 ; drop impacting lasers:
+                 ulasers2 (let [done-lasers (map first l-p-hits)]
+                            (remove (fn [l] (some #{l} done-lasers)) ulasers1))
+
+                 ; slow the hit paddles:
+                 [ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
+
+                 ;; test explosion effect
+                 l-p-explosions (map (fn [{owner :owner :as laser}] 
+                                       (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
+                                         (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
+                                     (map first l-p-hits))
+
+                 l-b-hits (laser-ball-hits ulasers1 ball1)
+                 ball2 (if (empty? l-b-hits) ball1 (new-ball))
+                 ;_ (if-not (empty? l-b-hits) (println l-b-hits))
+                 l-b-explosions (map (fn [{owner :owner :as laser}] 
+                                       (new-explosion (assoc (select-keys laser [:position]) :color white)))
+                                     (map first l-b-hits))
+
+                 ;test-explosions (create-explosions (get-controls-for input controller-mapping :master))
+                 ;explosions1 (concat explosions test-explosions new-explosions)
+                 explosions1 (concat explosions l-p-explosions l-b-explosions)
+                 explosions2 (update-explosions explosions1 dt)
 
 
-(defn update-state [state dt input] 
-  (let [next-state (case (:mode state)
-                     :ready (update-state-ready state dt input)
-                     :playing (update-state-playing state dt input)
-                     :paused (update-state-paused state dt input)
-                     :scored (update-state-scored state dt input)
-                     state)]
+                 ]
+             (assoc state 
+                    :red-paddle ured1
+                    :green-paddle ugreen1
+                    :ball ball2
+                    :score uscore
+                    :mode umode
+                    :lasers ulasers2
+                    :explosions explosions2
+                    )
+             ))))
+
+(def modes {:ready   ready-mode
+            :playing playing-mode
+            :paused  base-mode
+            :scored  base-mode})
+
+(defn update-state 
+  "Transform current game state into next game state
+  based on time delta (dt) and user input.
+  
+  The update function is pulled from the current mode's :update
+  which is drawn from the 'modes' map based on the :mode
+  in state.  If the :mode changes due to update, the
+  transition-in function for the subsequent mode will be invoked."
+  [state dt input] 
+  (let [current-mode (get modes (:mode state))
+        update-fn    (get current-mode :update)
+        next-state   (if update-fn 
+                       (update-fn state dt input)
+                       state)]
     (if (= (:mode state) (:mode next-state))
       next-state
-      (case (:mode next-state)
-        :ready (transition-to-ready state next-state)
-        :playing (transition-to-playing state next-state)
-        :paused (transition-to-paused state next-state)
-        :scored (transition-to-scored state next-state)
-        next-state))))
+      (let [next-mode        (get modes (:mode next-state))
+            transition-in-fn (get next-mode :in)]
+        (transition-in-fn state next-state)))))
 
 
 
