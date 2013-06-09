@@ -22,8 +22,9 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def red-laser-color [1 0.7 0.7 0.5])
 (def green-laser-color [0.7 1 0.7 0.5])
+(def white [1 1 1 1])
 
-(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color [1 1 1 1] :velocity [60 30]})
+(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
 (defn new-red-paddle [] {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]})
 (defn new-green-paddle []  {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]})
 
@@ -228,6 +229,17 @@
                    (not (= (:owner laser) (:id paddle))))]
     [laser paddle]))
 
+(defn laser-strikes-ball? [laser ball]
+  (let [l-box (box/to-box laser)
+        b-box (box/to-box ball)]
+    (or (box/box-piercing-box? l-box b-box)
+        (box/box-piercing-box? b-box l-box))))
+
+(defn laser-ball-hits [lasers ball]
+  (for [laser lasers :when (laser-strikes-ball? laser ball)] 
+    [laser ball]))
+
+
 (defn apply-slow-effect-to-paddle [paddle]
   (assoc paddle :slow-effect {:ttl 1.0}))
 
@@ -270,9 +282,9 @@
          score :score 
          lasers :lasers 
          explosions :explosions}  state
-        uball (update-ball ball dt [red green] goals bounds)
-        score-event (:goal-scored-by uball)
-        uscore (if score-event (score-hit uball score) score)
+        ball1 (update-ball ball dt [red green] goals bounds)
+        score-event (:goal-scored-by ball1)
+        uscore (if score-event (score-hit ball1 score) score)
         umode (if score-event :scored (update-mode state input controller-mapping))
         ured (update-paddle red input controller-mapping dt)
         ugreen (update-paddle green input controller-mapping dt)
@@ -280,30 +292,39 @@
         ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
         ulasers1 (add-new-lasers [ured ugreen] ulasers)
 
-        ; collision detection
-        hits (laser-paddle-hits ulasers1 [ured ugreen])
+        ;; laser-paddle collision detection
+        l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
         ; drop impacting lasers:
-        ulasers2 (let [done-lasers (map first hits)]
-                   ;(if (not (empty done-lasers)) (println hits))
+        ulasers2 (let [done-lasers (map first l-p-hits)]
                    (remove (fn [l] (some #{l} done-lasers)) ulasers1))
-        ; slow the hit paddles:
-        [ured1 ugreen1] (apply-slow-effect-to-paddles (map second hits) ured ugreen)
 
+        ; slow the hit paddles:
+        [ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
 
         ;; test explosion effect
-        new-explosions (map (fn [{owner :owner :as laser}] 
+        l-p-explosions (map (fn [{owner :owner :as laser}] 
                               (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
                                 (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
-                            (map first hits))
+                            (map first l-p-hits))
+
+        l-b-hits (laser-ball-hits ulasers1 ball1)
+        ball2 (if (empty? l-b-hits) ball1 (new-ball))
+        ;_ (if-not (empty? l-b-hits) (println l-b-hits))
+        l-b-explosions (map (fn [{owner :owner :as laser}] 
+                              (new-explosion (assoc (select-keys laser [:position]) :color white)))
+                            (map first l-b-hits))
+        
         ;test-explosions (create-explosions (get-controls-for input controller-mapping :master))
         ;explosions1 (concat explosions test-explosions new-explosions)
-        explosions1 (concat explosions new-explosions)
+        explosions1 (concat explosions l-p-explosions l-b-explosions)
         explosions2 (update-explosions explosions1 dt)
+
+
         ]
     (assoc state 
            :red-paddle ured1
            :green-paddle ugreen1
-           :ball uball
+           :ball ball2
            :score uscore
            :mode umode
            :lasers ulasers2

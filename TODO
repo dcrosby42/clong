@@ -1,12 +1,13 @@
 Features:
 
-/ Fire lasers from paddles
-/ Make lasers do something to enemy paddle
-- Make lasers do something to enemy ball
+- Light randomization of initial ball launch
+- Light randomization of explosions
 - Effect on paddle strike
 - Effect on wall strike
 - Effect on goal strike
-- Light randomization of initial ball launch
+/ Make lasers do something to ball
+/ Fire lasers from paddles
+/ Make lasers do something to enemy paddle
 / Delay ball instantiation and launch until Enter
 / Deflect off ceiling and floor
 / Count score when goal is struck
