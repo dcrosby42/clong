@@ -63,6 +63,19 @@
    })
 
 
+; Ball:   id size color velocity position 
+; Paddle: id position size color 
+; Laser:  id position size color velocity ttl owner
+; Explosion: particles ttl
+; Particle: position size color velocity accel size-change
+
+; Component
+;   type 
+;   id  ?
+;   eid ?
+
+; 
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; CONTROLS
@@ -341,47 +354,44 @@
                  ured (update-paddle red input controller-mapping dt)
                  ugreen (update-paddle green input controller-mapping dt)
 
-                 ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
-                 ulasers1 (add-new-lasers [ured ugreen] ulasers)
+                 ;ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
+                 ;ulasers1 (add-new-lasers [ured ugreen] ulasers)
 
                  ;; laser-paddle collision detection
-                 l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
+                 ;l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
                  ; drop impacting lasers:
-                 ulasers2 (let [done-lasers (map first l-p-hits)]
-                            (remove (fn [l] (some #{l} done-lasers)) ulasers1))
+                 ;ulasers2 (let [done-lasers (map first l-p-hits)]
+                 ;           (remove (fn [l] (some #{l} done-lasers)) ulasers1))
 
                  ; slow the hit paddles:
-                 [ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
+                 ;[ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
 
-                 ;; test explosion effect
-                 l-p-explosions (map (fn [{owner :owner :as laser}] 
-                                       (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
-                                         (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
-                                     (map first l-p-hits))
+                 ;l-p-explosions (map (fn [{owner :owner :as laser}] 
+                 ;                      (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
+                 ;                        (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
+                 ;                    (map first l-p-hits))
 
-                 l-b-hits (laser-ball-hits ulasers1 ball1)
-                 ball2 (if (empty? l-b-hits) ball1 (new-ball))
-                 ;_ (if-not (empty? l-b-hits) (println l-b-hits))
-                 l-b-explosions (map (fn [{owner :owner :as laser}] 
-                                       (new-explosion (assoc (select-keys laser [:position]) :color white)))
-                                     (map first l-b-hits))
+                 ;l-b-hits (laser-ball-hits ulasers1 ball1)
+                 ;ball2 (if (empty? l-b-hits) ball1 (new-ball))
+                 ;l-b-explosions (map (fn [{owner :owner :as laser}] 
+                 ;                      (new-explosion (assoc (select-keys laser [:position]) :color white)))
+                 ;                    (map first l-b-hits))
 
-                 ;test-explosions (create-explosions (get-controls-for input controller-mapping :master))
-                 ;explosions1 (concat explosions test-explosions new-explosions)
-                 explosions1 (concat explosions l-p-explosions l-b-explosions)
-                 explosions2 (update-explosions explosions1 dt)
+                 ;explosions1 (concat explosions l-p-explosions l-b-explosions)
+                 ;explosions2 (update-explosions explosions1 dt)
 
 
                  ]
-             (assoc state 
-                    :red-paddle ured1
-                    :green-paddle ugreen1
-                    :ball ball2
-                    :score uscore
-                    :mode umode
-                    :lasers ulasers2
-                    :explosions explosions2
-                    )
+             state
+             ;(assoc state 
+             ;       :red-paddle ured1
+             ;       :green-paddle ugreen1
+             ;       :ball ball2
+             ;       :score uscore
+             ;       :mode umode
+             ;       :lasers ulasers2
+             ;       :explosions explosions2
+             ;       )
              ))))
 
 (def modes {:ready   ready-mode
