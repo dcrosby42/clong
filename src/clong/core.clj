@@ -41,6 +41,27 @@
                      } opts)]
     opts))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; STATE
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def base-state 
+  {
+   :mode :ready
+   :bounds [320 0 0 480] ; t l b r
+   :goals [ { :id :red-goal, :scorer-for :green, :body { :position [-20 0] :size [20 320] } }
+            { :id :green-goal, :scorer-for :red, :body { :position [480 0] :size [20 320] } } ]
+   :score { :red 0 :green 0 }
+
+   :red-paddle   (new-red-paddle)
+   :green-paddle (new-green-paddle)
+   :ball (new-ball)
+   :lasers []
+   :explosions []
+   })
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -441,8 +462,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-
-(defn sandbox-screen [state stuff]
+(defn pong-screen [state stuff]
   (let [shape-renderer (ref nil)
         camera (ref nil)
         font (ref nil)
@@ -483,27 +503,6 @@
        }
       )))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; STATE
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def base-state 
-  {
-   :mode :ready
-   :bounds [320 0 0 480] ; t l b r
-   :goals [ { :id :red-goal, :scorer-for :green, :body { :position [-20 0] :size [20 320] } }
-            { :id :green-goal, :scorer-for :red, :body { :position [480 0] :size [20 320] } } ]
-   :score { :red 0 :green 0 }
-
-   :red-paddle   (new-red-paddle)
-   :green-paddle (new-green-paddle)
-   :ball (new-ball)
-   :lasers []
-   :explosions []
-   })
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -517,25 +516,25 @@
 (defonce state (ref base-state))
 (defonce stuff (ref {}))
 (defn new-state [] (dosync (ref-set state base-state)))
-;(defn new-ball [] (:ball base-state))
 (defn bb [] (dosync (alter state assoc :ball (new-ball))))
+
+    
+(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.core :reload))
+
+(defn set-screen [s] (.postRunnable @app (fn [] (.setScreen @game s))))
+
+(defn sb [] (set-screen (pong-screen state stuff)))
+
+(defn rr [] (rl)(sb))
+(defn rs [] (rr)(new-state))
 
 (defn start []
   (let [g (gh/ez-game)
         a (LwjglApplication. g "My Application" 480 320 false)]
     (dosync (ref-set game g)
              (ref-set app a))
+    (sb)
     true))
-    
-(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.core :reload))
-
-(defn set-screen [s] (.postRunnable @app (fn [] (.setScreen @game s))))
-
-(defn sb [] (set-screen (sandbox-screen state stuff)))
-
-(defn rr [] (rl)(sb))
-(defn rs [] (rr)(new-state))
-
 
 
 
