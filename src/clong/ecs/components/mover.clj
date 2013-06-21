@@ -6,6 +6,7 @@
   [:mover 
    (merge {:position [0 0] :velocity [0 0] :accel [0 0]} (apply hash-map opts))])
 
+; { :position [0 0] :velocity [0 0] :accel [0 0] }
 (defn update-mover-velocity [{[dx dy] :velocity [ddx ddy] :accel :as mover} dt]
   (assoc mover :velocity [(+ dx (* dt ddx))
                           (+ dy (* dt ddy))]))

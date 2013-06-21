@@ -26,7 +26,7 @@
 (def green-laser-color [0.7 1 0.7 0.5])
 (def white [1 1 1 1])
 
-(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
+;(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
 
 (defn ball-entity [manager] 
   (em/entity manager 
@@ -39,9 +39,12 @@
 ;; STATE
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(def base-state
-  { :entity-manager (em/manager) 
-   })
+;(def base-state
+;  { :entity-manager (em/manager) 
+;   })
+(def base-entity-manager (-> (em/manager)
+                           (ball-entity)))
+
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -51,9 +54,10 @@
 (defn mover-system [manager dt input]
   (em/update-components manager :mover m/update-mover dt))
 
+
+;; Compose all systems:
 (def systems 
   [mover-system])
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -69,12 +73,13 @@
 ;; DRAWING
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;(defn draw-block [srend {[x y] :position [w h] :size [r g b a] :color}]
-;  (doto srend
-;    (.begin ShapeRenderer$ShapeType/Filled)
-;    (.setColor r g b a)
-;    (.rect x y w h)
-;    (.end)))
+(defn draw-block [shape-renderer {[x y] :position [w h] :size [r g b a] :color}]
+  ;(print "shape-renderer: ") (pprint shape-renderer)
+  (doto shape-renderer
+    (.begin ShapeRenderer$ShapeType/Filled)
+    (.setColor r g b a)
+    (.rect x y w h)
+    (.end)))
 ;
 ;(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
 ;
@@ -107,14 +112,10 @@
   ;(draw-hud shape-renderer camera font sprite-batch state)
   )
 ;
-(def rendering-system  (fn [a b] (println "hi")))
-;  (let [_shape-renderer (ShapeRenderer.)
-;        _camera         (gh/ortho-camera 480 320)
-;        _font           (BitmapFont.)
-;        _sprite-batch   (SpriteBatch.)]
-;    (fn [manager dt]
-;      (draw-level _shape-renderer _camera _font _sprite-batch manager)
-;      manager)))
+(defn rendering-system [manager dt input {sr :shape-renderer :as fw-objs}]
+  (doseq [entity (map (partial em/get-entity manager) (em/entities-with-component manager :mover))]
+    (let [{mover :mover} entity]
+      (draw-block sr {:position (get mover :position) :size [10 10] :color white}))))
 
 (def side-effector-systems 
   [rendering-system])
@@ -126,48 +127,39 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 
-(defn pong-screen [entity-manager stuff]
-  (let [shape-renderer (ref nil)
-        camera (ref nil)
-        font (ref nil)
-        sprite-batch (ref nil)
+(defn pong-screen [entity-manager snapshot]
+  (let [fw-objs (ref {})
         input-events (ref in/key-input-events)
         input-processor (in/input-processor input-events)
-        next-input (fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
+        next-input identity ;(fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
         ]
     (gh/ez-screen 
       {:show (fn [] 
-               (let [_shape-renderer (ShapeRenderer.)
-                     _camera         (gh/ortho-camera 480 320)
-                     _font           (BitmapFont.)
-                     _sprite-batch   (SpriteBatch.)
-                     ]
-                 (.setInputProcessor Gdx/input input-processor)
-                 (dosync
-                   (ref-set shape-renderer _shape-renderer)
-                   (ref-set camera _camera)
-                   (ref-set font _font)
-                   (ref-set sprite-batch _sprite-batch)
-                   )))
+               (.setInputProcessor Gdx/input input-processor)
+               (dosync
+                 ;; Build "framework objects", things that are needed to tie into GDX, 
+                 ;; which cannot be built until we're in a running app, on the app thread.
+                 (ref-set fw-objs {:shape-renderer (ShapeRenderer.)
+                                   :camera         (gh/ortho-camera 480 320)
+                                   :font           (BitmapFont.)
+                                   :sprite-batch   (SpriteBatch.)})))
 
        :render (fn [dt]
                  (dosync 
                    (let [input1 (next-input @input-events)            ;; Collect input
                          entity-manager1 (alter entity-manager update-entity-manager dt input1)] ;; Update game state
 
-
                      ;; Clear input:
                      (ref-set input-events in/key-input-events)  
 
                      ;; Update snapshot:
-                     (alter stuff assoc 
-                            :input input1
-                            :entity-manager entity-manager1)
+                     (ref-set snapshot {:input input1
+                                        :entity-manager entity-manager1})
                      ))
 
                  ;; exec all side-effector systems:
                  (let [em @entity-manager] 
-                   (doseq [sys side-effector-systems] (sys em dt))))
+                   (doseq [sys side-effector-systems] (sys em dt (get snapshot :input) @fw-objs))))
        }
       )))
 
@@ -178,32 +170,22 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defonce game (ref nil))
-(defonce app (ref nil))
+(defonce game (gh/ez-game))
+(defonce app (LwjglApplication. game "Clong!" 480 320 false))
 
-(defonce state (ref base-state))
-(defonce stuff (ref {}))
-(defn new-state [] (dosync (ref-set state base-state)))
-(defn bb [] (dosync (alter state assoc :ball (new-ball))))
+(defn set-screen! [s] (.postRunnable app (fn [] (.setScreen game s))))
 
-    
+(defonce entity-manager (ref base-entity-manager))
+(defn reset-entity-manager! [] (dosync (ref-set entity-manager base-entity-manager)))
+(defonce snapshot (ref {:input nil :entity-manager nil}))
+
+(defn reset-screen! [] (set-screen! (pong-screen entity-manager snapshot)))
+
 (defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.core :reload))
+(defn rr [] (rl)(reset-screen!))
+(defn rs [] (rr)(reset-entity-manager!))
 
-(defn set-screen [s] (.postRunnable @app (fn [] (.setScreen @game s))))
-
-(defn sb [] (set-screen (pong-screen state stuff)))
-
-(defn rr [] (rl)(sb))
-(defn rs [] (rr)(new-state))
-
-(defn start []
-  (let [g (gh/ez-game)
-        a (LwjglApplication. g "My Application" 480 320 false)]
-    (dosync (ref-set game g)
-             (ref-set app a))
-    (sb)
-    true))
-
+(reset-screen!)
 
 
 (defn -main [& args]
