@@ -24,15 +24,33 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def red-laser-color [1 0.7 0.7 0.5])
 (def green-laser-color [0.7 1 0.7 0.5])
+(def red [1 0 0 1])
+(def green [0 1 0 1])
 (def white [1 1 1 1])
 
 ;(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
 
 (defn ball-entity [manager] 
   (em/entity manager 
-             [(m/mover :position [220 120] :velocity [60 30])
-              ]))
+             :name :ball
+             :box  {:position [220 120] :size [10 10] :velocity [30 60] :color white}))
+
+(defn field-entity [manager]
+  (em/entity manager
+             :name :field
+             :box {:position [0 0] :size [480 320]}))
               
+(defn red-goal-entity [manager]
+  (em/entity manager
+             :name :red-goal
+             :scorer :green
+             :box {:position [-20 0] :size [20 320]}))
+
+(defn green-goal-entity [manager]
+  (em/entity manager
+             :name :green-goal
+             :scorer :red
+             :box {:position [480 0] :size [20 320]}))
               
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -43,7 +61,11 @@
 ;  { :entity-manager (em/manager) 
 ;   })
 (def base-entity-manager (-> (em/manager)
-                           (ball-entity)))
+                           (ball-entity)
+                           (field-entity)
+                           (red-goal-entity)
+                           (green-goal-entity)
+                           ))
 
     
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -51,13 +73,12 @@
 ;; SYSTEMS
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn mover-system [manager dt input]
-  (em/update-components manager :mover m/update-mover dt))
-
-
+(defn box-mover-system [manager dt input]
+  (em/update-components manager :box m/update-mover dt))
+    
 ;; Compose all systems:
 (def systems 
-  [mover-system])
+  [box-mover-system])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -112,10 +133,9 @@
   ;(draw-hud shape-renderer camera font sprite-batch state)
   )
 ;
-(defn rendering-system [manager dt input {sr :shape-renderer :as fw-objs}]
-  (doseq [entity (map (partial em/get-entity manager) (em/entities-with-component manager :mover))]
-    (let [{mover :mover} entity]
-      (draw-block sr {:position (get mover :position) :size [10 10] :color white}))))
+(defn rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
+  (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entities-with-component manager :box)))]
+      (draw-block shape-renderer box)))
 
 (def side-effector-systems 
   [rendering-system])
@@ -181,7 +201,7 @@
 
 (defn reset-screen! [] (set-screen! (pong-screen entity-manager snapshot)))
 
-(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.core :reload))
+(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover 'clong.core  :reload))
 (defn rr [] (rl)(reset-screen!))
 (defn rs [] (rr)(reset-entity-manager!))
 

@@ -17,9 +17,9 @@
   "Accepts entity manager and a seq of components, creates a new entity in the manager
   based on those components.
   Returns the updated entity manager."
-  [manager components]
+  [manager & opts]
   (let [eid (gen-eid)
-        ent (apply hash-map (apply concat components))]
+        ent (apply hash-map opts)]
     (assoc manager eid ent)))
 
 (defn get-entity 
