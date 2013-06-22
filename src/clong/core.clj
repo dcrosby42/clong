@@ -169,11 +169,8 @@
 (defn paddle-bounds-system [manager dt input]
   (let [eids (em/entity-ids-with-component manager :paddle)]
     (reduce (fn [mgr eid] 
-              (let [box (em/get-entity-component mgr eid :box)
-                    [x y]  (:position box)
-                    ;_ (if (some true? (vals controls)) (println "pcs:" controls "v1:" v1))
-                    ]
-                (em/update-component mgr eid :box assoc :position [x (clamp 0 270 y)])))
+              (em/update-component mgr eid :box (fn [{[x y] :position :as box}] 
+                                                  (assoc box :position [x (clamp 0 270 y)]))))
             manager
             eids)))
       
