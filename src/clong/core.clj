@@ -53,12 +53,21 @@
 (defn red-paddle-entity [manager] 
   (em/entity manager 
              :paddle []
-             :box  {:position [20 90] :size [12 48] :velocity [0 0] :color red}))
+             :box  {:position [20 90] :size [12 48] :velocity [0 0] :color red}
+             :controls {:up false :down false :shoot false}
+             :controller-mapping {:up    [:held Input$Keys/W]
+                                  :down  [:held Input$Keys/S]
+                                  :shoot [:pressed Input$Keys/E]}))
 
 (defn green-paddle-entity [manager] 
   (em/entity manager 
              :paddle []
-             :box  {:position [440 60] :size [12 48] :velocity [0 0] :color green}))
+             :box  {:position [440 60] :size [12 48] :velocity [0 0] :color green}
+             :controls {:up false :down false :shoot false}
+             :controller-mapping {:up    [:held Input$Keys/UP]
+                                  :down  [:held Input$Keys/DOWN]
+                                  :shoot [:pressed Input$Keys/PERIOD]}))
+
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -77,7 +86,14 @@
                            (green-paddle-entity)
                            ))
 
-    
+(defn held-keys [controller-mapping]
+  (map (comp second second) (filter (fn [[ctrl [act keycode]]] (= :held act)) controller-mapping)))
+
+(def held-key-watch-list 
+  (let [cmaps (map :controller-mapping (em/entities-with-component base-entity-manager :controller-mapping))]
+    (mapcat held-keys cmaps)))
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; SYSTEMS
@@ -114,11 +130,47 @@
         (em/update-component manager ball-eid :box assoc :velocity v1))
       ; else no change:
       manager)))
+
+(defn resolve-control [input [action key-code]]
+  (contains? (action input) key-code))
+
+(defn resolve-controls [input ctrl-defs]
+  (vmap (fn [k v] (resolve-control input v)) ctrl-defs))
+
+(defn controller-system [manager dt input]
+  (let [eids (em/entity-ids-with-component manager :controller-mapping)]
+    (reduce (fn [mgr eid] 
+              (let [controller-mapping (em/get-entity-component mgr eid :controller-mapping)
+                    controls (resolve-controls input controller-mapping)
+                    ;_ (if (some true? (vals controls)) (println controls))
+                    ;_ (pprint controls)
+                    ]
+                (em/update-component mgr eid :controls (fn [_] controls))))
+            manager
+            eids)))
+
+(defn calc-paddle-velocity [paddle controls]
+    (let [speed (if (:slow-effect paddle) 100 300)
+          y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
+      [0 y]))
+
+(defn paddle-control-system [manager dt input]
+  (let [eids (em/entity-ids-with-component manager :paddle)]
+    (reduce (fn [mgr eid] 
+              (let [paddle (em/get-entity mgr eid)
+                    controls (get paddle :controls)
+                    v1 (calc-paddle-velocity paddle controls)
+                    ;_ (if (some true? (vals controls)) (println "pcs:" controls "v1:" v1))
+                    ]
+                (em/update-component mgr eid :box assoc :velocity v1)))
+            manager
+            eids)))
       
-
-
 ;; Compose all systems:
-(def systems [box-mover-system
+(def systems [
+              controller-system
+              paddle-control-system
+              box-mover-system
               ball-cieling-system
               ball-paddle-system
               ])
@@ -194,7 +246,7 @@
   (let [fw-objs (ref {})
         input-events (ref in/key-input-events)
         input-processor (in/input-processor input-events)
-        next-input identity ;(fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
+        next-input (fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
         ]
     (gh/ez-screen 
       {:show (fn [] 
