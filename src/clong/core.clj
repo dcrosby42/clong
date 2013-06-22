@@ -4,7 +4,7 @@
      [clong.ecs.entity-manager   :as em]
      [clong.ecs.components.mover :as m]
      [clong.utils :refer :all]
-     [clong.box :as box]
+     [clong.box :as b]
      [clong.gdx-helpers :as gh]
      [clong.input :as in]
       )
@@ -58,7 +58,7 @@
 (defn green-paddle-entity [manager] 
   (em/entity manager 
              :paddle []
-             :box  {:position [440 90] :size [12 48] :velocity [0 0] :color green}))
+             :box  {:position [440 60] :size [12 48] :velocity [0 0] :color green}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -73,6 +73,8 @@
                            (field-entity)
                            (red-goal-entity)
                            (green-goal-entity)
+                           (red-paddle-entity)
+                           (green-paddle-entity)
                            ))
 
     
@@ -85,9 +87,9 @@
   (em/update-components manager :box m/update-mover dt))
 
 (defn ball-cieling-system [manager dt input]
-  (let [bounds   (:box (em/entity-with-component manager :field))
-        ball-eid (em/entity-id-with-component manager :ball)
+  (let [ball-eid (em/entity-id-with-component manager :ball)
         box      (em/get-entity-component manager ball-eid :box)
+        bounds   (:box (em/entity-with-component manager :field))
         {[x y] :position [w h] :size} box
         {[left bottom] :position [bw bh] :size}  bounds]
     (if (or (>= (+ y h) (+ bottom bh)) (<= y bottom) false)
@@ -99,9 +101,26 @@
       ; else no change:
       manager)))
     
+(defn ball-paddle-system [manager dt input]
+  (let [ball-eid (em/entity-id-with-component manager :ball)
+        ball-box (em/get-entity-component manager ball-eid :box)
+        ball-b-box (b/to-box ball-box)
+        paddle-boxes (map (fn [p] (b/to-box (:box p))) (em/entities-with-component manager :paddle))]
+    (if (some #(b/box-piercing-box? ball-b-box %1) paddle-boxes)
+      ; ball has struck a paddle
+      (let [{[dx dy] :velocity} ball-box
+            v1 [(* -1 dx) dy]]
+        ; negate the horiz velocity:
+        (em/update-component manager ball-eid :box assoc :velocity v1))
+      ; else no change:
+      manager)))
+      
+
+
 ;; Compose all systems:
 (def systems [box-mover-system
               ball-cieling-system
+              ball-paddle-system
               ])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
