@@ -1,5 +1,7 @@
 (ns clong.ecs.entity-manager
-  )
+  (:require 
+     [clong.utils :refer :all]
+     ))
 
 (defn gen-eid 
   "Create unique entity ID based on gensym, like 'e1432. 
@@ -19,7 +21,7 @@
   Returns the updated entity manager."
   [manager & opts]
   (let [eid (gen-eid)
-        ent (apply hash-map opts)]
+        ent (assoc (apply hash-map opts) :eid eid)]
     (assoc manager eid ent)))
 
 (defn get-entity 
@@ -36,12 +38,13 @@
   (get-in manager [eid ctype]))
 
 
+(defn- has-component-type? [mapentry component-type]
+  (contains? (val mapentry) component-type))
+
 (defn entity-ids-with-component 
   "Finds all entities having a component of the given type and returns a seq of their ids."
   [manager component-type]
-  (map key
-       (filter (fn [mapentry] (contains? (val mapentry) component-type)) 
-               manager)))
+  (map key (filter #(has-component-type? %1 component-type) manager)))
 
 (defn entity-id-with-component 
   "Finds first entity id having a component of the given type."
@@ -60,6 +63,18 @@
   [manager component-type]
   (first (entities-with-component manager component-type)))
 
+
+(defn search-components 
+  "Finds entities with all the given component types, returns tuples with the component values.
+  The last element in the tuple is the entity id."
+  [manager component-types]
+  (remove (fn [xs] (some nil? xs))
+          (map (fn [mapentry]
+                 (cons
+                   (key mapentry)
+                   (select-values (val mapentry) component-types)))
+               manager)))
+
 (defn update-component
   "Applies fn f to the component of the given entity id and updates the entity manager with the result.
   Extra args will be passed along to f when it is applied to the component.
@@ -77,6 +92,11 @@
           manager
           (entity-ids-with-component manager component-type)))
 
-(defn color [r g b a]
-  [:color [r g b a]])
-
+(defn update-components2
+  "For entities containing all the given component types,
+  update the first component by applying f to the found components, including any extra args."
+  [manager component-types f & args]
+  (reduce (fn [mgr [eid & components]]
+              (apply update-component mgr eid (first component-types) f (concat (rest components) args)))
+            manager
+            (search-components manager component-types)))

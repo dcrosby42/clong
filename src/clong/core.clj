@@ -154,6 +154,7 @@
           y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
       [0 y]))
 
+; [:paddle :controls :box] [:box]
 (defn paddle-control-system [manager dt input]
   (let [eids (em/entity-ids-with-component manager :paddle)]
     (reduce (fn [mgr eid] 
@@ -165,14 +166,22 @@
                 (em/update-component mgr eid :box assoc :velocity v1)))
             manager
             eids)))
+;
+; (em/query-and-update-components manager [:paddle :controls :box] [:box] (fn [paddle controls box]
+; )
+
+;(defn paddle-bounds-system [manager dt input]
+;  (let [eids (em/entity-ids-with-component manager :paddle)]
+;    (reduce (fn [mgr eid] 
+;              (em/update-component mgr eid :box (fn [{[x y] :position :as box}] 
+;                                                  (assoc box :position [x (clamp 0 270 y)]))))
+;            manager
+;            eids)))
 
 (defn paddle-bounds-system [manager dt input]
-  (let [eids (em/entity-ids-with-component manager :paddle)]
-    (reduce (fn [mgr eid] 
-              (em/update-component mgr eid :box (fn [{[x y] :position :as box}] 
-                                                  (assoc box :position [x (clamp 0 270 y)]))))
-            manager
-            eids)))
+  (em/update-components2 manager [:box :paddle]
+                      (fn [{[x y] :position :as box} paddle] 
+                        (assoc box :position [x (clamp 0 270 y)]))))
       
 ;; Compose all systems:
 (def systems [

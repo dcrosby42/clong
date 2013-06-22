@@ -20,3 +20,6 @@
 (defn find-by [maps k v] (first (filter #(= v (get %1 k)) maps)))
 
 (defn bool-to-int [b] (if b 1 0))
+
+; http://blog.jayfields.com/2011/01/clojure-select-keys-select-values-and.html
+(defn select-values [map ks] (reduce #(conj %1 (map %2)) [] ks))
