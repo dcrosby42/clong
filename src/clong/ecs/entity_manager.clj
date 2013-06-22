@@ -36,12 +36,29 @@
   (get-in manager [eid ctype]))
 
 
-(defn entities-with-component 
+(defn entity-ids-with-component 
   "Finds all entities having a component of the given type and returns a seq of their ids."
   [manager component-type]
   (map key
        (filter (fn [mapentry] (contains? (val mapentry) component-type)) 
                manager)))
+
+(defn entity-id-with-component 
+  "Finds first entity id having a component of the given type."
+  [manager component-type]
+  (first (entity-ids-with-component manager component-type)))
+  
+(defn entities-with-component 
+  "Returns entities having a component of the given type."
+  [manager component-type]
+  (map val
+       (filter (fn [mapentry] (contains? (val mapentry) component-type)) 
+               manager)))
+
+(defn entity-with-component 
+  "Returns the first entity having a component of the given type."
+  [manager component-type]
+  (first (entities-with-component manager component-type)))
 
 (defn update-component
   "Applies fn f to the component of the given entity id and updates the entity manager with the result.
@@ -58,7 +75,7 @@
   (reduce (fn [mgr eid] 
             (apply update-component mgr eid component-type f args))
           manager
-          (entities-with-component manager component-type)))
+          (entity-ids-with-component manager component-type)))
 
 (defn color [r g b a]
   [:color [r g b a]])

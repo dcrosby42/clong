@@ -32,26 +32,34 @@
 
 (defn ball-entity [manager] 
   (em/entity manager 
-             :name :ball
+             :ball []
              :box  {:position [220 120] :size [10 10] :velocity [30 60] :color white}))
 
 (defn field-entity [manager]
   (em/entity manager
-             :name :field
+             :field []
              :box {:position [0 0] :size [480 320]}))
               
 (defn red-goal-entity [manager]
   (em/entity manager
-             :name :red-goal
-             :scorer :green
+             :goal :green
              :box {:position [-20 0] :size [20 320]}))
 
 (defn green-goal-entity [manager]
   (em/entity manager
-             :name :green-goal
-             :scorer :red
+             :goal :red
              :box {:position [480 0] :size [20 320]}))
               
+(defn red-paddle-entity [manager] 
+  (em/entity manager 
+             :paddle []
+             :box  {:position [20 90] :size [12 48] :velocity [0 0] :color red}))
+
+(defn green-paddle-entity [manager] 
+  (em/entity manager 
+             :paddle []
+             :box  {:position [440 90] :size [12 48] :velocity [0 0] :color green}))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; STATE
@@ -75,10 +83,26 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn box-mover-system [manager dt input]
   (em/update-components manager :box m/update-mover dt))
+
+(defn ball-cieling-system [manager dt input]
+  (let [bounds   (:box (em/entity-with-component manager :field))
+        ball-eid (em/entity-id-with-component manager :ball)
+        box      (em/get-entity-component manager ball-eid :box)
+        {[x y] :position [w h] :size} box
+        {[left bottom] :position [bw bh] :size}  bounds]
+    (if (or (>= (+ y h) (+ bottom bh)) (<= y bottom) false)
+      ; If box has collided with top or bottom of field, negate vertical velocity:
+      (let [{[dx dy] :velocity} box
+            v1                [dx (* -1 dy)]]
+        ; update the box component for the ball entity:
+        (em/update-component manager ball-eid :box assoc :velocity v1))
+      ; else no change:
+      manager)))
     
 ;; Compose all systems:
-(def systems 
-  [box-mover-system])
+(def systems [box-mover-system
+              ball-cieling-system
+              ])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -134,7 +158,7 @@
   )
 ;
 (defn rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
-  (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entities-with-component manager :box)))]
+  (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entity-ids-with-component manager :box)))]
       (draw-block shape-renderer box)))
 
 (def side-effector-systems 
