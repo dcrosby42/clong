@@ -116,6 +116,7 @@
         (em/update-component manager ball-eid :box assoc :velocity v1))
       ; else no change:
       manager)))
+
     
 (defn ball-paddle-system [manager dt input]
   (let [ball-eid (em/entity-id-with-component manager :ball)
@@ -131,45 +132,50 @@
       ; else no change:
       manager)))
 
-(defn resolve-control [input [action key-code]]
-  (contains? (action input) key-code))
 
 (defn resolve-controls [input ctrl-defs]
-  (vmap (fn [k v] (resolve-control input v)) ctrl-defs))
+  (vmap (fn [k [action key-code]] 
+          (contains? (action input) key-code)) ctrl-defs))
 
-(defn controller-system [manager dt input]
-  (let [eids (em/entity-ids-with-component manager :controller-mapping)]
-    (reduce (fn [mgr eid] 
-              (let [controller-mapping (em/get-entity-component mgr eid :controller-mapping)
-                    controls (resolve-controls input controller-mapping)
-                    ;_ (if (some true? (vals controls)) (println controls))
-                    ;_ (pprint controls)
-                    ]
-                (em/update-component mgr eid :controls (fn [_] controls))))
-            manager
-            eids)))
+;; Before update-components2:
+;(defn controller-system [manager dt input]
+;  (let [eids (em/entity-ids-with-component manager :controller-mapping)]
+;    (reduce (fn [mgr eid] 
+;              (let [controller-mapping (em/get-entity-component mgr eid :controller-mapping)
+;                    controls (resolve-controls input controller-mapping)]
+;                (em/update-component mgr eid :controls (fn [_] controls))))
+;            manager
+;            eids)))
+
+(defn controllser-system [manager dt input]
+  (em/update-components2 manager [:controls :controller-mapping]
+                         (fn [controls controller-mapping]
+                           (resolve-controls input controller-mapping))))
 
 (defn calc-paddle-velocity [paddle controls]
     (let [speed (if (:slow-effect paddle) 100 300)
           y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
       [0 y]))
 
-; [:paddle :controls :box] [:box]
-(defn paddle-control-system [manager dt input]
-  (let [eids (em/entity-ids-with-component manager :paddle)]
-    (reduce (fn [mgr eid] 
-              (let [paddle (em/get-entity mgr eid)
-                    controls (get paddle :controls)
-                    v1 (calc-paddle-velocity paddle controls)
-                    ;_ (if (some true? (vals controls)) (println "pcs:" controls "v1:" v1))
-                    ]
-                (em/update-component mgr eid :box assoc :velocity v1)))
-            manager
-            eids)))
-;
-; (em/query-and-update-components manager [:paddle :controls :box] [:box] (fn [paddle controls box]
-; )
+;; Before update-components2:
+;(defn paddle-control-system [manager dt input]
+;  (let [eids (em/entity-ids-with-component manager :paddle)]
+;    (reduce (fn [mgr eid] 
+;              (let [paddle (em/get-entity mgr eid)
+;                    controls (get paddle :controls)
+;                    v1 (calc-paddle-velocity paddle controls)
+;                    ]
+;                (em/update-component mgr eid :box assoc :velocity v1)))
+;            manager
+;            eids)))
 
+(defn paddle-control-system [manager dt input]
+  (em/update-components2 manager [:box :controls :paddle]
+                         (fn [box controls paddle]
+                           (assoc box :velocity (calc-paddle-velocity {} controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
+    
+
+;; Before update-components2:
 ;(defn paddle-bounds-system [manager dt input]
 ;  (let [eids (em/entity-ids-with-component manager :paddle)]
 ;    (reduce (fn [mgr eid] 
@@ -182,6 +188,11 @@
   (em/update-components2 manager [:box :paddle]
                       (fn [{[x y] :position :as box} paddle] 
                         (assoc box :position [x (clamp 0 270 y)]))))
+
+; Maybe a macro like this:
+;(defsystem paddle-bounds-system [:box :paddle] 
+;           [{[x y] :position :as box} paddle] 
+;             (assoc box :position [x (clamp 0 270 y)]))))
       
 ;; Compose all systems:
 (def systems [
