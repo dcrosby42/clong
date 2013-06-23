@@ -75,6 +75,22 @@
                    (select-values (val mapentry) component-types)))
                manager)))
 
+(defn search-entities
+  "Return any entities containing a component-type/value pair matching component-type and component-value.
+  Eg.  (seatch-entities mgr :id :red-paddle)
+       => ({:eid e1403, :id :red-paddle, :position [10 50], :score 5}, ...)"
+  [manager component-type component-value]
+  (filter (fn [entity] 
+            (some #(= %1 [component-type component-value]) entity)) 
+          (vals manager)))
+
+(defn search-entity
+  "Return the first entity containing a component-type/value pair matching component-type and component-value.
+  Eg.  (seatch-entity mgr :id :red-paddle)
+       => {:eid e1403, :id :red-paddle, :position [10 50], :score 5}"
+  [manager component-type component-value]
+  (first (search-entities manager component-type component-value)))
+
 (defn update-component
   "Applies fn f to the component of the given entity id and updates the entity manager with the result.
   Extra args will be passed along to f when it is applied to the component.

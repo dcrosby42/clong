@@ -42,18 +42,20 @@
               
 (defn red-goal-entity [manager]
   (em/entity manager
-             :goal :green
+             :goal []
              :box {:position [-20 0] :size [20 320]}))
 
 (defn green-goal-entity [manager]
   (em/entity manager
-             :goal :red
+             :goal []
              :box {:position [480 0] :size [20 320]}))
               
 (defn red-paddle-entity [manager] 
   (em/entity manager 
-             :paddle []
-             :box  {:position [20 90] :size [12 48] :velocity [0 0] :color red}
+             :paddle   []
+             :id       :red-paddle
+             :score    5
+             :box      {:position [20 90] :size [12 48] :velocity [0 0] :color red}
              :controls {:up false :down false :shoot false}
              :controller-mapping {:up    [:held Input$Keys/W]
                                   :down  [:held Input$Keys/S]
@@ -61,8 +63,10 @@
 
 (defn green-paddle-entity [manager] 
   (em/entity manager 
-             :paddle []
-             :box  {:position [440 60] :size [12 48] :velocity [0 0] :color green}
+             :paddle   []
+             :id       :green-paddle
+             :score    3
+             :box      {:position [440 60] :size [12 48] :velocity [0 0] :color green}
              :controls {:up false :down false :shoot false}
              :controller-mapping {:up    [:held Input$Keys/UP]
                                   :down  [:held Input$Keys/DOWN]
@@ -147,7 +151,7 @@
 ;            manager
 ;            eids)))
 
-(defn controllser-system [manager dt input]
+(defn controller-system [manager dt input]
   (em/update-components2 manager [:controls :controller-mapping]
                          (fn [controls controller-mapping]
                            (resolve-controls input controller-mapping))))
@@ -243,6 +247,26 @@
 ;    ))
 ;
 
+(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
+
+(defn hud-rendering-system [manager dt input fw-objs]
+  (let [{camera       :camera
+         font         :font
+         sprite-batch :sprite-batch} fw-objs
+        red-score     (:score (em/search-entity manager :id :red-paddle))
+        green-score     (:score (em/search-entity manager :id :green-paddle))
+        game-mode-string (get game-mode-strings :playing)]
+    (.setProjectionMatrix sprite-batch (.combined camera))
+    (.begin sprite-batch)
+
+    (.draw font sprite-batch (str "Red: " red-score) 20 20)
+    (.draw font sprite-batch (str "Green: " green-score) 400 20)
+    (.draw font sprite-batch game-mode-string 220 20)
+
+    (.end sprite-batch)
+    ))
+
+
 (defn draw-level [shape-renderer camera font sprite-batch state]
 
   ;; Draw block shapes:
@@ -257,12 +281,14 @@
   ;(draw-hud shape-renderer camera font sprite-batch state)
   )
 ;
-(defn rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
+(defn box-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
   (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entity-ids-with-component manager :box)))]
       (draw-block shape-renderer box)))
 
+
 (def side-effector-systems 
-  [rendering-system])
+  [box-rendering-system
+   hud-rendering-system])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
