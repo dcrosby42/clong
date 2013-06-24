@@ -30,10 +30,12 @@
 
 ;(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
 
+(defn reset-ball [box] (assoc box :position [220 120] :velocity [30 60]))
+
 (defn ball-entity [manager] 
   (em/entity manager 
              :ball []
-             :box  {:position [220 120] :size [10 10] :velocity [30 60] :color white}))
+             :box  (reset-ball {:size [10 10] :color white})))
 
 (defn field-entity [manager]
   (em/entity manager
@@ -43,18 +45,24 @@
 (defn red-goal-entity [manager]
   (em/entity manager
              :goal []
+             :score-goes-to :green-paddle
              :box {:position [-20 0] :size [20 320]}))
 
 (defn green-goal-entity [manager]
   (em/entity manager
              :goal []
+             :score-goes-to :red-paddle
              :box {:position [480 0] :size [20 320]}))
+
+(defn goal-scored-entity [manager paddle-id]
+  (em/entity manager
+             :goal-scored paddle-id))
               
 (defn red-paddle-entity [manager] 
   (em/entity manager 
              :paddle   []
              :id       :red-paddle
-             :score    5
+             :score    0
              :box      {:position [20 90] :size [12 48] :velocity [0 0] :color red}
              :controls {:up false :down false :shoot false}
              :controller-mapping {:up    [:held Input$Keys/W]
@@ -65,12 +73,13 @@
   (em/entity manager 
              :paddle   []
              :id       :green-paddle
-             :score    3
+             :score    0
              :box      {:position [440 60] :size [12 48] :velocity [0 0] :color green}
              :controls {:up false :down false :shoot false}
              :controller-mapping {:up    [:held Input$Keys/UP]
                                   :down  [:held Input$Keys/DOWN]
                                   :shoot [:pressed Input$Keys/PERIOD]}))
+
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -197,7 +206,23 @@
 ;(defsystem paddle-bounds-system [:box :paddle] 
 ;           [{[x y] :position :as box} paddle] 
 ;             (assoc box :position [x (clamp 0 270 y)]))))
-      
+
+(defn first-overlapping-goal [goals ball]
+  (first (drop-while (fn [goal] (not (b/box-piercing-box? (b/to-box (:box ball)) (b/to-box (:box goal))))) goals)))
+
+(defn goal-system [manager dt input]
+  (let [goals (em/entities-with-component manager :goal)
+        ball  (em/entity-with-component manager :ball)]
+    (if-let [{scorer :score-goes-to} (first-overlapping-goal goals ball)]
+      (if-let [{eid :eid} (em/search-entity manager :id scorer)]
+        (-> manager 
+          (em/update-component eid :score inc)
+          (em/update-components2 [:box :ball]
+                                 (fn [box ball] (reset-ball box)))
+          )
+        manager)
+      manager)))
+
 ;; Compose all systems:
 (def systems [
               controller-system
@@ -206,6 +231,7 @@
               paddle-bounds-system
               ball-cieling-system
               ball-paddle-system
+              goal-system
               ])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
