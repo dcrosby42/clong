@@ -1,8 +1,14 @@
-Refactoring ideas:
 
-- Define game states as maps { :in :update :out }
+- Append rendering systems per-mode?
+- :scored mode should persist for 1 second then transition automatically to :ready
+- :ready's in-fn should reset necessary state in the manager 
+- First-time game setup should honor and live by the in-fn for :ready
+- :modes should be :mode-fn-sets or something.  An object like this should be called "mode-fns": { :in default-transition, :out (fn [m] ...), :update (fn [m d i] ...)}
 
-
+- Fire lasers
+- Collide lasers w paddles
+- Poisen paddles w slowness on laser impact
+- Trigger explosion on impact
 
 
 Features:
