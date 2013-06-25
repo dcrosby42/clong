@@ -97,7 +97,8 @@
              :game-control []
              :id :game-control
              :controls {:start false}
-             :controller-mapping {:start [:pressed Input$Keys/ENTER]}))
+             :controller-mapping {:start [:pressed Input$Keys/ENTER]
+                                  :pause [:pressed Input$Keys/SPACE]}))
             
 
 
@@ -224,6 +225,8 @@
         [[_ controls] & _] (em/search-components manager [:controls :game-control])]
     (case mode
       :ready (if (:start controls) (change-to-mode manager :playing) manager)
+      :playing (if (:pause controls) (change-to-mode manager :paused) manager)
+      :paused (if (:pause controls) (change-to-mode manager :playing) manager)
       manager)))
 
 
@@ -279,6 +282,11 @@
                              game-control-system
                              )))
 
+(def paused-mode
+  (assoc base-mode :update (system-chain 
+                             controller-system
+                             game-control-system
+                             )))
 ;(def playing-mode
 ;  (assoc base-mode
 ;         :update 
@@ -345,7 +353,7 @@
 
 (def modes {:ready   ready-mode
             :playing playing-mode
-            ;:paused  base-mode
+            :paused  paused-mode
             :scored  base-mode
             })
 
