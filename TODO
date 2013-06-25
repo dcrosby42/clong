@@ -28,9 +28,9 @@ Features:
 / Pause on space
 
 Tech:
-- Bring "graph" plumbing library in
+- Bring "graph" plumbing library in?
 
-Smells:
+OLD Smells from pre-ECS refactoring:
 - UGH: fire laser
   Firing control knowledge is hiding inside update-paddle, but that function returns a paddle.  
   OPTION 1: set temp state on the paddle, indicating a laser should be fired, and rely on a subsequent function to:
