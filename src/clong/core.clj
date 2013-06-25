@@ -215,7 +215,7 @@
           (em/update-component eid :score inc)
           (em/update-components2 [:box :ball]
                                  (fn [box ball] (reset-ball box)))
-          ;(em/send-message :change-mode :scored)
+          (change-to-mode :scored)
           )
         manager)
       manager)))
@@ -227,7 +227,8 @@
       :ready (if (:start controls) (change-to-mode manager :playing) manager)
       :playing (if (:pause controls) (change-to-mode manager :paused) manager)
       :paused (if (:pause controls) (change-to-mode manager :playing) manager)
-      manager)))
+      :scored (if (or (:start controls) (:pause controls)) (change-to-mode manager :ready) manager)
+      manager))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -243,7 +244,6 @@
 ;  (reduce (fn [mgr sys] (sys mgr dt input)) manager systems))
 ;(def dev-update-entity-manager (apply system-chain systems))
 
-;(defn default-transition [manager] manager)
 (def default-transition identity)
 
 (defn default-update [manager dt input] manager)
@@ -253,6 +253,11 @@
    :update default-update
    :out    default-transition})
 
+(def froze-mode
+  (assoc base-mode :update (system-chain 
+                             controller-system
+                             game-control-system
+                             )))
 ;(def ready-mode
 ;  (assoc base-mode
 ;         :in 
@@ -263,12 +268,12 @@
 ;                  :green-paddle (new-green-paddle)
 ;                  :lasers []
 ;                  :explosions []))))
-;
-(def ready-mode
-  (assoc base-mode :update (system-chain 
-                             controller-system
-                             game-control-system
-                             )))
+
+(def ready-mode froze-mode)
+  ;(assoc base-mode :update (system-chain 
+  ;                           controller-system
+  ;                           game-control-system
+  ;                           )))
 
 (def playing-mode
   (assoc base-mode :update (system-chain 
@@ -282,79 +287,14 @@
                              game-control-system
                              )))
 
-(def paused-mode
-  (assoc base-mode :update (system-chain 
-                             controller-system
-                             game-control-system
-                             )))
-;(def playing-mode
-;  (assoc base-mode
-;         :update 
-;         (fn [state dt input]
-;           (let [{red :red-paddle 
-;                  green :green-paddle 
-;                  ball :ball 
-;                  goals :goals 
-;                  bounds :bounds 
-;                  score :score 
-;                  lasers :lasers 
-;                  explosions :explosions}  state
-;                 ball1 (update-ball ball dt [red green] goals bounds)
-;                 score-event (:goal-scored-by ball1)
-;                 uscore (if score-event (score-hit ball1 score) score)
-;                 umode (if score-event :scored (update-mode state input controller-mapping))
-;                 ured (update-paddle red input controller-mapping dt)
-;                 ugreen (update-paddle green input controller-mapping dt)
-;
-;                 ;ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
-;                 ;ulasers1 (add-new-lasers [ured ugreen] ulasers)
-;
-;                 ;; laser-paddle collision detection
-;                 ;l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
-;                 ; drop impacting lasers:
-;                 ;ulasers2 (let [done-lasers (map first l-p-hits)]
-;                 ;           (remove (fn [l] (some #{l} done-lasers)) ulasers1))
-;
-;                 ; slow the hit paddles:
-;                 ;[ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
-;
-;                 ;l-p-explosions (map (fn [{owner :owner :as laser}] 
-;                 ;                      (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
-;                 ;                        (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
-;                 ;                    (map first l-p-hits))
-;
-;                 ;l-b-hits (laser-ball-hits ulasers1 ball1)
-;                 ;ball2 (if (empty? l-b-hits) ball1 (new-ball))
-;                 ;l-b-explosions (map (fn [{owner :owner :as laser}] 
-;                 ;                      (new-explosion (assoc (select-keys laser [:position]) :color white)))
-;                 ;                    (map first l-b-hits))
-;
-;                 ;explosions1 (concat explosions l-p-explosions l-b-explosions)
-;                 ;explosions2 (update-explosions explosions1 dt)
-;
-;
-;                 ]
-;             state
-;             ;(assoc state 
-;             ;       :red-paddle ured1
-;             ;       :green-paddle ugreen1
-;             ;       :ball ball2
-;             ;       :score uscore
-;             ;       :mode umode
-;             ;       :lasers ulasers2
-;             ;       :explosions explosions2
-;             ;       )
-;             ))))
-;
-;(def modes {:ready   ready-mode
-;            :playing playing-mode
-;            :paused  base-mode
-;            :scored  base-mode})
+(def paused-mode froze-mode)
+
+(def scored-mode froze-mode)
 
 (def modes {:ready   ready-mode
             :playing playing-mode
             :paused  paused-mode
-            :scored  base-mode
+            :scored  scored-mode
             })
 
     
