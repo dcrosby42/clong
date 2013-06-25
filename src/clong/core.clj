@@ -16,6 +16,18 @@
      (com.badlogic.gdx.backends.lwjgl LwjglApplication)
      ))
 
+(defn get-mode [manager] (get-in manager [:meta :mode]))
+(defn get-modes [manager] (get-in manager [:meta :modes]))
+(defn set-mode [manager mode] (assoc-in manager [:meta :mode] mode))
+(defn change-to-mode [manager new-mode-id]
+  (let [modes       (get-modes manager)
+        old-mode-id (get-mode manager)
+        old-mode    (old-mode-id modes)
+        out-fn      (:out old-mode)
+        new-mode    (new-mode-id modes)
+        in-fn       (:in new-mode)
+        ]
+    (set-mode (in-fn (out-fn manager)) new-mode-id)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -80,31 +92,14 @@
                                   :down  [:held Input$Keys/DOWN]
                                   :shoot [:pressed Input$Keys/PERIOD]}))
 
+(defn game-control-entity [manager]
+  (em/entity manager
+             :game-control []
+             :id :game-control
+             :controls {:start false}
+             :controller-mapping {:start [:pressed Input$Keys/ENTER]}))
+            
 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; STATE
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;(def base-state
-;  { :entity-manager (em/manager) 
-;   })
-(def base-entity-manager (-> (em/manager)
-                           (ball-entity)
-                           (field-entity)
-                           (red-goal-entity)
-                           (green-goal-entity)
-                           (red-paddle-entity)
-                           (green-paddle-entity)
-                           ))
-
-(defn held-keys [controller-mapping]
-  (map (comp second second) (filter (fn [[ctrl [act keycode]]] (= :held act)) controller-mapping)))
-
-(def held-key-watch-list 
-  (let [cmaps (map :controller-mapping (em/entities-with-component base-entity-manager :controller-mapping))]
-    (mapcat held-keys cmaps)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -219,29 +214,148 @@
           (em/update-component eid :score inc)
           (em/update-components2 [:box :ball]
                                  (fn [box ball] (reset-ball box)))
+          ;(em/send-message :change-mode :scored)
           )
         manager)
       manager)))
 
-;; Compose all systems:
-(def systems [
-              controller-system
-              paddle-control-system
-              box-mover-system
-              paddle-bounds-system
-              ball-cieling-system
-              ball-paddle-system
-              goal-system
-              ])
+(defn game-control-system [manager dt input]
+  (let [mode (get-mode manager)
+        [[_ controls] & _] (em/search-components manager [:controls :game-control])]
+    (case mode
+      :ready (if (:start controls) (change-to-mode manager :playing) manager)
+      manager)))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; MODES
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn system-chain [& systems]
+  (fn [manager dt input]
+    (reduce (fn [mgr sys] (sys mgr dt input)) manager systems)))
+
+;(defn update-entity-manager [manager dt input]
+;  (reduce (fn [mgr sys] (sys mgr dt input)) manager systems))
+;(def dev-update-entity-manager (apply system-chain systems))
+
+;(defn default-transition [manager] manager)
+(def default-transition identity)
+
+(defn default-update [manager dt input] manager)
+
+(def base-mode
+  {:in     default-transition
+   :update default-update
+   :out    default-transition})
+
+;(def ready-mode
+;  (assoc base-mode
+;         :in 
+;         (fn [old-state state]
+;           (assoc state 
+;                  :ball (new-ball)
+;                  :red-paddle (new-red-paddle)
+;                  :green-paddle (new-green-paddle)
+;                  :lasers []
+;                  :explosions []))))
+;
+(def ready-mode
+  (assoc base-mode :update (system-chain 
+                             controller-system
+                             game-control-system
+                             )))
+
+(def playing-mode
+  (assoc base-mode :update (system-chain 
+                             controller-system
+                             paddle-control-system
+                             box-mover-system
+                             paddle-bounds-system
+                             ball-cieling-system
+                             ball-paddle-system
+                             goal-system
+                             game-control-system
+                             )))
+
+;(def playing-mode
+;  (assoc base-mode
+;         :update 
+;         (fn [state dt input]
+;           (let [{red :red-paddle 
+;                  green :green-paddle 
+;                  ball :ball 
+;                  goals :goals 
+;                  bounds :bounds 
+;                  score :score 
+;                  lasers :lasers 
+;                  explosions :explosions}  state
+;                 ball1 (update-ball ball dt [red green] goals bounds)
+;                 score-event (:goal-scored-by ball1)
+;                 uscore (if score-event (score-hit ball1 score) score)
+;                 umode (if score-event :scored (update-mode state input controller-mapping))
+;                 ured (update-paddle red input controller-mapping dt)
+;                 ugreen (update-paddle green input controller-mapping dt)
+;
+;                 ;ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
+;                 ;ulasers1 (add-new-lasers [ured ugreen] ulasers)
+;
+;                 ;; laser-paddle collision detection
+;                 ;l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
+;                 ; drop impacting lasers:
+;                 ;ulasers2 (let [done-lasers (map first l-p-hits)]
+;                 ;           (remove (fn [l] (some #{l} done-lasers)) ulasers1))
+;
+;                 ; slow the hit paddles:
+;                 ;[ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
+;
+;                 ;l-p-explosions (map (fn [{owner :owner :as laser}] 
+;                 ;                      (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
+;                 ;                        (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
+;                 ;                    (map first l-p-hits))
+;
+;                 ;l-b-hits (laser-ball-hits ulasers1 ball1)
+;                 ;ball2 (if (empty? l-b-hits) ball1 (new-ball))
+;                 ;l-b-explosions (map (fn [{owner :owner :as laser}] 
+;                 ;                      (new-explosion (assoc (select-keys laser [:position]) :color white)))
+;                 ;                    (map first l-b-hits))
+;
+;                 ;explosions1 (concat explosions l-p-explosions l-b-explosions)
+;                 ;explosions2 (update-explosions explosions1 dt)
+;
+;
+;                 ]
+;             state
+;             ;(assoc state 
+;             ;       :red-paddle ured1
+;             ;       :green-paddle ugreen1
+;             ;       :ball ball2
+;             ;       :score uscore
+;             ;       :mode umode
+;             ;       :lasers ulasers2
+;             ;       :explosions explosions2
+;             ;       )
+;             ))))
+;
+;(def modes {:ready   ready-mode
+;            :playing playing-mode
+;            :paused  base-mode
+;            :scored  base-mode})
+
+(def modes {:ready   ready-mode
+            :playing playing-mode
+            ;:paused  base-mode
+            :scored  base-mode
+            })
+
+    
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; UPDATE
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn update-entity-manager [manager dt input]
-  (reduce (fn [mgr sys] (sys mgr dt input)) manager systems))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -255,23 +369,6 @@
     (.setColor r g b a)
     (.rect x y w h)
     (.end)))
-;
-;(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
-;
-;(defn draw-hud [shape-renderer camera font sprite-batch state]
-;  (let [{red-score :red green-score :green} (:score state)
-;        {game-mode :mode} state
-;        ]
-;    (.setProjectionMatrix sprite-batch (.combined camera))
-;    (.begin sprite-batch)
-;
-;    (.draw font sprite-batch (str "Red: " red-score) 20 20)
-;    (.draw font sprite-batch (str "Green: " green-score) 400 20)
-;    (.draw font sprite-batch ((:mode state) game-mode-strings) 220 20)
-;
-;    (.end sprite-batch)
-;    ))
-;
 
 (def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
 
@@ -281,7 +378,7 @@
          sprite-batch :sprite-batch} fw-objs
         red-score     (:score (em/search-entity manager :id :red-paddle))
         green-score     (:score (em/search-entity manager :id :green-paddle))
-        game-mode-string (get game-mode-strings :playing)]
+        game-mode-string (get game-mode-strings (get-mode manager))]
     (.setProjectionMatrix sprite-batch (.combined camera))
     (.begin sprite-batch)
 
@@ -321,13 +418,20 @@
 ;; SETUP
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn held-keys [controller-mapping]
+  (map (comp second second) (filter (fn [[ctrl [act keycode]]] (= :held act)) controller-mapping)))
+
+(defn held-key-watch-list [manager]
+  (let [cmaps (map :controller-mapping (em/entities-with-component manager :controller-mapping))]
+    (mapcat held-keys cmaps)))
 
 
 (defn pong-screen [entity-manager snapshot]
   (let [fw-objs (ref {})
         input-events (ref in/key-input-events)
         input-processor (in/input-processor input-events)
-        next-input (fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
+        watch-list (held-key-watch-list @entity-manager)
+        next-input (fn [ie] (assoc ie :held (in/read-held-keys watch-list)))
         ]
     (gh/ez-screen 
       {:show (fn [] 
@@ -343,7 +447,10 @@
        :render (fn [dt]
                  (dosync 
                    (let [input1 (next-input @input-events)            ;; Collect input
-                         entity-manager1 (alter entity-manager update-entity-manager dt input1)] ;; Update game state
+                         mode-fns  (get (get-modes @entity-manager) (get-mode @entity-manager))
+                         update-fn (get mode-fns :update)
+                         
+                         entity-manager1 (alter entity-manager update-fn dt input1)] ;; Update game state
 
                      ;; Clear input:
                      (ref-set input-events in/key-input-events)  
@@ -358,6 +465,25 @@
                    (doseq [sys side-effector-systems] (sys em dt (get snapshot :input) @fw-objs))))
        }
       )))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; STATE
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def base-entity-manager (-> (em/manager)
+                           (assoc :meta {:mode :ready, :modes modes})
+
+                           (ball-entity)
+                           (field-entity)
+                           (red-goal-entity)
+                           (green-goal-entity)
+                           (red-paddle-entity)
+                           (green-paddle-entity)
+
+                           (game-control-entity)
+                           ))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
