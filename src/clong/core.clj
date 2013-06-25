@@ -101,6 +101,12 @@
                                   :pause [:pressed Input$Keys/SPACE]}))
             
 
+(defn scored-entity [manager ttl]
+  (em/entity manager
+             :id :scored-timer
+             :timer { :ttl ttl }))
+
+  
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -213,8 +219,6 @@
       (if-let [{eid :eid} (em/search-entity manager :id scorer)]
         (-> manager 
           (em/update-component eid :score inc)
-          (em/update-components2 [:box :ball]
-                                 (fn [box ball] (reset-ball box)))
           (change-to-mode :scored)
           )
         manager)
@@ -228,55 +232,56 @@
       :playing (if (:pause controls) (change-to-mode manager :paused) manager)
       :paused (if (:pause controls) (change-to-mode manager :playing) manager)
       :scored (if (or (:start controls) (:pause controls)) (change-to-mode manager :ready) manager)
-      manager))
+      manager)))
+
+(defn timer-system [manager dt input]
+  (em/update-components manager :timer (fn [{ttl :ttl :as timer}] 
+                                         (assoc timer :ttl (- ttl dt)))))
+
+(defn scored-system [manager dt input]
+  (let [timer (:timer (em/search-entity manager :id :scored-timer))]
+    (if (<= (:ttl timer) 0)
+      (change-to-mode manager :ready)
+      manager)))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
-;; MODES
+;; UPDATE MODES
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn system-chain [& systems]
   (fn [manager dt input]
     (reduce (fn [mgr sys] (sys mgr dt input)) manager systems)))
 
-;(defn update-entity-manager [manager dt input]
-;  (reduce (fn [mgr sys] (sys mgr dt input)) manager systems))
-;(def dev-update-entity-manager (apply system-chain systems))
-
 (def default-transition identity)
 
 (defn default-update [manager dt input] manager)
 
-(def base-mode
+(def default-mode
   {:in     default-transition
    :update default-update
    :out    default-transition})
 
 (def froze-mode
-  (assoc base-mode :update (system-chain 
+  (assoc default-mode :update (system-chain 
                              controller-system
                              game-control-system
                              )))
-;(def ready-mode
-;  (assoc base-mode
-;         :in 
-;         (fn [old-state state]
-;           (assoc state 
-;                  :ball (new-ball)
-;                  :red-paddle (new-red-paddle)
-;                  :green-paddle (new-green-paddle)
-;                  :lasers []
-;                  :explosions []))))
 
-(def ready-mode froze-mode)
-  ;(assoc base-mode :update (system-chain 
-  ;                           controller-system
-  ;                           game-control-system
-  ;                           )))
+(def ready-mode 
+  (assoc froze-mode
+         :in (fn [manager] 
+               (-> manager
+                 (em/update-components2 [:box :ball]
+                                        (fn [box ball] (reset-ball box)))
+                 (em/update-components2 [:box :paddle]
+                                        (fn [{[x y] :position :as box} _] 
+                                          (assoc box :position [x 120])))
+               ))))
 
 (def playing-mode
-  (assoc base-mode :update (system-chain 
+  (assoc default-mode :update (system-chain 
                              controller-system
                              paddle-control-system
                              box-mover-system
@@ -289,7 +294,17 @@
 
 (def paused-mode froze-mode)
 
-(def scored-mode froze-mode)
+(def scored-mode 
+  (assoc default-mode 
+         :in (fn [manager]
+               (scored-entity manager 2.0))
+         :update (system-chain 
+                   timer-system
+                   scored-system)
+         :out (fn [manager]
+                (let [st (em/search-entity manager :id :scored-timer)]
+                  (em/remove-entity manager (:eid st))))))
+
 
 (def modes {:ready   ready-mode
             :playing playing-mode
@@ -299,11 +314,6 @@
 
     
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; UPDATE
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -431,6 +441,8 @@
                            (green-paddle-entity)
 
                            (game-control-entity)
+
+                           (change-to-mode :ready)
                            ))
 
 
