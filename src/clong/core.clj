@@ -218,22 +218,41 @@
     manager
     (em/search-components manager [:controls :box :paddle :id])))
 
+;(defn expire-lasers [manager]
+;  (reduce 
+;    (fn [mgr [eid timer laser]] 
+;         (if (<= (:ttl timer) 0)
+;           (em/remove-entity mgr eid)
+;           mgr))
+;    manager
+;    (em/search-components manager [:timer :laser])))
 (defn expire-lasers [manager]
-  (reduce 
-    (fn [mgr [eid timer laser]] 
-         (if (<= (:ttl timer) 0)
-           (em/remove-entity mgr eid)
-           mgr))
-    manager
-    (em/search-components manager [:timer :laser])))
+  (let [expiring-lasers (filter (fn [[eid timer laser]] (<= (:ttl timer) 0)) 
+                         (em/search-components manager [:timer :laser]))]
+    (em/remove-entities manager (map :eid expiring-lasers))))
 
 (defn clear-lasers [manager]
-  (reduce em/remove-entity
-          manager 
-          (em/entity-ids-with-component manager :laser)))
+  (em/remove-entities manager (em/entity-ids-with-component manager :laser)))
+
+(defn laser-strikes-paddle? [laser paddle]
+  (b/box-piercing-box? (b/to-box (:box laser)) (b/to-box (:box paddle))))
+
+(defn laser-paddle-hits [lasers paddles]
+  (for [laser lasers, paddle paddles
+        :when (and (laser-strikes-paddle? laser paddle) 
+                   (not (= (:owner laser) (:id paddle))))]
+    [laser paddle]))
+
+(defn collide-lasers-paddles [manager]
+  (let [lasers (em/entities-with-component manager :laser)
+        paddles (em/entities-with-component manager :paddle)
+        hits (laser-paddle-hits lasers paddles)
+        done-laser-eids (map :eid (map first hits))
+        ]
+    (em/remove-entities manager done-laser-eids)))
 
 (defn paddle-weapon-system [manager dt input]
-  (-> manager add-lasers expire-lasers))
+  (-> manager add-lasers collide-lasers-paddles expire-lasers))
   ;(-> manager add-lasers))
 
 ;; Before update-components2:

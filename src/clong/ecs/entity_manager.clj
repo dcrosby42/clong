@@ -29,8 +29,12 @@
   [manager eid] (get manager eid))
 
 (defn remove-entity 
-  "Remove an entity and its component from the entity manager."
+  "Remove an entity and its components from the entity manager."
   [manager eid] (dissoc manager eid))
+
+(defn remove-entities
+  "Remove entities and their components from the entity manager."
+  [manager eids] (reduce remove-entity manager eids))
 
 (defn get-entity-component 
   "Return the component of the given type for an entity in the entity-manager."
