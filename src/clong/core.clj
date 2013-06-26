@@ -105,9 +105,18 @@
   (em/entity manager
              :id :scored-timer
              :timer { :ttl ttl }))
-
-  
-
+;
+          ;{:speed speed :position [x y] :owner paddle-id :color color})))
+(defn laser-entity [manager {position :position, speed :speed, color :color, owner :owner}]
+  ;(println "laser-entity owner" owner position speed color)
+  (em/entity manager
+             :laser []
+             :owner owner
+             :box {:position position
+                   :size     [36 6] 
+                   :velocity [speed 0] 
+                   :color    color}
+             :timer {:ttl 1.5}))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -173,7 +182,7 @@
       [0 y]))
 
 ;; Before update-components2:
-;(defn paddle-control-system [manager dt input]
+;(defn paddle-movement-system [manager dt input]
 ;  (let [eids (em/entity-ids-with-component manager :paddle)]
 ;    (reduce (fn [mgr eid] 
 ;              (let [paddle (em/get-entity mgr eid)
@@ -184,11 +193,48 @@
 ;            manager
 ;            eids)))
 
-(defn paddle-control-system [manager dt input]
+(defn paddle-movement-system [manager dt input]
   (em/update-components2 manager [:box :controls :paddle]
                          (fn [box controls paddle]
                            (assoc box :velocity (calc-paddle-velocity {} controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
     
+
+(defn fire-laser [manager paddle-id box]
+  ;(println "FIRED by" paddle-id)
+    (let [{[paddle-x paddle-y] :position} box
+          x         (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
+          y         (+ paddle-y 24)
+          speed     (if (= :red-paddle paddle-id) 300 -300)
+          color     (if (= :red-paddle paddle-id) red-laser-color green-laser-color)]
+      (laser-entity manager 
+          {:speed speed :position [x y] :owner paddle-id :color color})))
+
+(defn add-lasers [manager]
+  (reduce 
+    (fn [mgr [eid controls box paddle paddle-id]] 
+      (if (:shoot controls)
+        (fire-laser mgr paddle-id box)
+        mgr))
+    manager
+    (em/search-components manager [:controls :box :paddle :id])))
+
+(defn expire-lasers [manager]
+  (reduce 
+    (fn [mgr [eid timer laser]] 
+         (if (<= (:ttl timer) 0)
+           (em/remove-entity mgr eid)
+           mgr))
+    manager
+    (em/search-components manager [:timer :laser])))
+
+(defn clear-lasers [manager]
+  (reduce em/remove-entity
+          manager 
+          (em/entity-ids-with-component manager :laser)))
+
+(defn paddle-weapon-system [manager dt input]
+  (-> manager add-lasers expire-lasers))
+  ;(-> manager add-lasers))
 
 ;; Before update-components2:
 ;(defn paddle-bounds-system [manager dt input]
@@ -274,22 +320,25 @@
          :in (fn [manager] 
                (-> manager
                  (em/update-components2 [:box :ball]
-                                        (fn [box ball] (reset-ball box)))
+                                        (fn [box _] (reset-ball box)))
                  (em/update-components2 [:box :paddle]
                                         (fn [{[x y] :position :as box} _] 
                                           (assoc box :position [x 120])))
+                 (clear-lasers)
                ))))
 
 (def playing-mode
   (assoc default-mode :update (system-chain 
-                             controller-system
-                             paddle-control-system
-                             box-mover-system
-                             paddle-bounds-system
-                             ball-cieling-system
-                             ball-paddle-system
-                             goal-system
-                             game-control-system
+                                controller-system
+                                paddle-movement-system
+                                paddle-weapon-system
+                                box-mover-system
+                                paddle-bounds-system
+                                ball-cieling-system
+                                ball-paddle-system
+                                goal-system
+                                game-control-system
+                                timer-system
                              )))
 
 (def paused-mode froze-mode)
@@ -321,7 +370,6 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (defn draw-block [shape-renderer {[x y] :position [w h] :size [r g b a] :color}]
-  ;(print "shape-renderer: ") (pprint shape-renderer)
   (doto shape-renderer
     (.begin ShapeRenderer$ShapeType/Filled)
     (.setColor r g b a)

@@ -1,14 +1,18 @@
+!!! BUGZ / ISSUES
+? scored-mode: timer cleanup?
+? Applying the timer system in scored mode would increment ALL timer components in the manager
 
-- Append rendering systems per-mode?
-- :scored mode should persist for 1 second then transition automatically to :ready
-- :ready's in-fn should reset necessary state in the manager 
-- First-time game setup should honor and live by the in-fn for :ready
-- :modes should be :mode-fn-sets or something.  An object like this should be called "mode-fns": { :in default-transition, :out (fn [m] ...), :update (fn [m d i] ...)}
-
-- Fire lasers
 - Collide lasers w paddles
 - Poisen paddles w slowness on laser impact
 - Trigger explosion on impact
+
+- :modes should be :mode-fn-sets or something.  An object like this should be called "mode-fns": { :in default-transition, :out (fn [m] ...), :update (fn [m d i] ...)}
+- Append rendering systems per-mode?
+/ :scored mode should persist for 1 second then transition automatically to :ready
+/ :ready's in-fn should reset necessary state in the manager 
+/ First-time game setup should honor and live by the in-fn for :ready
+/ Fire lasers
+
 
 
 Features:
