@@ -1,11 +1,17 @@
   
-  Instead of :timer use :expiry on lasers and explosions,
-    write expiry-system
-    use expiry-system in playing mode
-    remove special code for expiring lasers and explosions
+  Augment timer system with "death-clock" 
+    timer componet that counts down
+    when ttl <= 0, the whole entity is removed from the manager
+    Names: :pickup :trash :delete :death :death-clock :die :remove
+    (once in place, could be used for all sorts of entity removal? [:remove {:ttl 0}]
+
 
   Once expiry is in place,
     convert update-explosions into particle-system 
+    remove special code for expiring lasers and explosions
+    Update scored-system to hinge on scored-timer presence, not the ttl
+      let timer expiry do the work
+
 
   Catalog the systems/functions that reach "outside" the entities and use :meta
 
@@ -47,6 +53,16 @@ Features:
 
 Tech:
 - Bring "graph" plumbing library in?
+
+--------------------
+A refactoring
+--------------------
+Timers:
+  timer-system / timer component was general and nice
+  expire-lasers, expire-explosions: separate code to make timed-out items vanish
+  scored-timer: very special handling being done.
+
+
 
 OLD Smells from pre-ECS refactoring:
 - UGH: fire laser
