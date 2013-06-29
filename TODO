@@ -1,12 +1,26 @@
+  
+  Instead of :timer use :expiry on lasers and explosions,
+    write expiry-system
+    use expiry-system in playing mode
+    remove special code for expiring lasers and explosions
+
+  Once expiry is in place,
+    convert update-explosions into particle-system 
+
+  Catalog the systems/functions that reach "outside" the entities and use :meta
+
+
 !!! BUGZ / ISSUES
+
+- Red laser explosions are stood back from the green paddle on impact (since explosions are ignited at the upper-left of the laser box)
 ? scored-mode: timer cleanup?
 ? Applying the timer system in scored mode would increment ALL timer components in the manager
 
-- Collide lasers w paddles
 - Poisen paddles w slowness on laser impact
-- Trigger explosion on impact
+/ Collide lasers w paddles
+/ Trigger explosion on impact
 
-- :modes should be :mode-fn-sets or something.  An object like this should be called "mode-fns": { :in default-transition, :out (fn [m] ...), :update (fn [m d i] ...)}
+- Naming... :modes should be :mode-fn-sets or something.  An object like this should be called "mode-fns": { :in default-transition, :out (fn [m] ...), :update (fn [m d i] ...)}
 - Append rendering systems per-mode?
 / :scored mode should persist for 1 second then transition automatically to :ready
 / :ready's in-fn should reset necessary state in the manager 

@@ -18,6 +18,19 @@
                             (+ y (* dt dy))])
     mover))
 
-(defn update-mover [m dt] (update-mover-position (update-mover-velocity m dt) dt))
+(defn update-mover-size [{[w h] :size [dw dh] :size-change :as mover} dt]
+  (if (and dw dh)
+    (assoc mover :size [(+ w (* dt dw))
+                        (+ h (* dt dh))])
+    mover))
+
+(defn update-mover [m dt] 
+  (update-mover-position 
+    (update-mover-velocity m dt)
+    dt))
+  ;(-> mover
+  ;  (update-mover-velocity dt)
+  ;  (update-mover-position dt)
+  ;  (update-mover-size dt)))
 
 

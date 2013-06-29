@@ -105,10 +105,8 @@
   (em/entity manager
              :id :scored-timer
              :timer { :ttl ttl }))
-;
-          ;{:speed speed :position [x y] :owner paddle-id :color color})))
+          
 (defn laser-entity [manager {position :position, speed :speed, color :color, owner :owner}]
-  ;(println "laser-entity owner" owner position speed color)
   (em/entity manager
              :laser []
              :owner owner
@@ -117,6 +115,17 @@
                    :velocity [speed 0] 
                    :color    color}
              :timer {:ttl 1.5}))
+
+(defn explosion-entity [manager {:keys [position color] :or {color [1 1 1 1]} :as laser}]
+  (let [particle {:position position :size [10 10] :size-change [-8 -8] :color color :velocity [-100 200] :accel [0 -600]}]
+    (em/entity manager
+               :explosion []
+               :timer {:ttl 0.8}
+               :particles [(assoc particle :velocity [100 200])
+                           (assoc particle :velocity [-100 200])
+                           (assoc particle :velocity [20 0])
+                           (assoc particle :velocity [-50 300])]
+               )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -200,11 +209,10 @@
     
 
 (defn fire-laser [manager paddle-id box]
-  ;(println "FIRED by" paddle-id)
     (let [{[paddle-x paddle-y] :position} box
           x         (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
           y         (+ paddle-y 24)
-          speed     (if (= :red-paddle paddle-id) 300 -300)
+          speed     (if (= :red-paddle paddle-id) 400 -400)
           color     (if (= :red-paddle paddle-id) red-laser-color green-laser-color)]
       (laser-entity manager 
           {:speed speed :position [x y] :owner paddle-id :color color})))
@@ -218,18 +226,14 @@
     manager
     (em/search-components manager [:controls :box :paddle :id])))
 
-;(defn expire-lasers [manager]
-;  (reduce 
-;    (fn [mgr [eid timer laser]] 
-;         (if (<= (:ttl timer) 0)
-;           (em/remove-entity mgr eid)
-;           mgr))
-;    manager
-;    (em/search-components manager [:timer :laser])))
-(defn expire-lasers [manager]
-  (let [expiring-lasers (filter (fn [[eid timer laser]] (<= (:ttl timer) 0)) 
-                         (em/search-components manager [:timer :laser]))]
-    (em/remove-entities manager (map :eid expiring-lasers))))
+; TODO: timer system?
+(defn remove-timed-out-entities [manager component-type]
+  (let [expired-results (filter (fn [[eid timer component]] (<= (:ttl timer) 0)) 
+                         (em/search-components manager [:timer component-type]))]
+    (em/remove-entities manager (map first expired-results))))
+
+(defn expire-lasers [manager] 
+  (remove-timed-out-entities manager :laser))
 
 (defn clear-lasers [manager]
   (em/remove-entities manager (em/entity-ids-with-component manager :laser)))
@@ -243,17 +247,33 @@
                    (not (= (:owner laser) (:id paddle))))]
     [laser paddle]))
 
+
+
+(defn add-explosions [manager lasers]
+  (reduce explosion-entity 
+          manager 
+          (map :box lasers)))
+
+
 (defn collide-lasers-paddles [manager]
   (let [lasers (em/entities-with-component manager :laser)
         paddles (em/entities-with-component manager :paddle)
         hits (laser-paddle-hits lasers paddles)
-        done-laser-eids (map :eid (map first hits))
+        hit-lasers (map first hits)
+        done-laser-eids (map :eid hit-lasers)
         ]
-    (em/remove-entities manager done-laser-eids)))
+    (-> manager
+      (add-explosions hit-lasers)
+      (em/remove-entities done-laser-eids)
+    )))
 
 (defn paddle-weapon-system [manager dt input]
-  (-> manager add-lasers collide-lasers-paddles expire-lasers))
-  ;(-> manager add-lasers))
+  (-> manager 
+    add-lasers 
+    collide-lasers-paddles 
+    expire-lasers ))
+
+
 
 ;; Before update-components2:
 ;(defn paddle-bounds-system [manager dt input]
@@ -310,6 +330,24 @@
       manager)))
 
 
+(defn expire-explosions [manager]
+  (remove-timed-out-entities manager :explosion))
+
+(defn update-explosions [manager dt]
+  (em/update-components manager :particles
+                        (fn [particles] (map #(m/update-mover %1 dt) particles))))
+                        ;(fn [explosion] 
+                        ;  (println "update explosion:" explosion)
+                        ;  (assoc explosion :particles 
+                        ;                       (map #(m/update-mover %1 dt) 
+                        ;                            (:particles explosion))))))
+
+(defn explosion-system [manager dt input]
+  (-> manager 
+    (expire-explosions)
+    (update-explosions dt)
+    ))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; UPDATE MODES
@@ -352,6 +390,7 @@
                                 paddle-movement-system
                                 paddle-weapon-system
                                 box-mover-system
+                                explosion-system
                                 paddle-bounds-system
                                 ball-cieling-system
                                 ball-paddle-system
@@ -433,9 +472,15 @@
   (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entity-ids-with-component manager :box)))]
       (draw-block shape-renderer box)))
 
+(defn box-particle-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
+  (let [particles (mapcat :particles (em/entities-with-component manager :particles))]
+    (doseq [box particles]
+      (draw-block shape-renderer box))))
+
 
 (def side-effector-systems 
   [box-rendering-system
+   box-particle-rendering-system
    hud-rendering-system])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
