@@ -170,16 +170,6 @@
   (vmap (fn [k [action key-code]] 
           (contains? (action input) key-code)) ctrl-defs))
 
-;; Before update-components2:
-;(defn controller-system [manager dt input]
-;  (let [eids (em/entity-ids-with-component manager :controller-mapping)]
-;    (reduce (fn [mgr eid] 
-;              (let [controller-mapping (em/get-entity-component mgr eid :controller-mapping)
-;                    controls (resolve-controls input controller-mapping)]
-;                (em/update-component mgr eid :controls (fn [_] controls))))
-;            manager
-;            eids)))
-
 (defn controller-system [manager dt input]
   (em/update-components2 manager [:controls :controller-mapping]
                          (fn [controls controller-mapping]
@@ -190,17 +180,6 @@
           y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
       [0 y]))
 
-;; Before update-components2:
-;(defn paddle-movement-system [manager dt input]
-;  (let [eids (em/entity-ids-with-component manager :paddle)]
-;    (reduce (fn [mgr eid] 
-;              (let [paddle (em/get-entity mgr eid)
-;                    controls (get paddle :controls)
-;                    v1 (calc-paddle-velocity paddle controls)
-;                    ]
-;                (em/update-component mgr eid :box assoc :velocity v1)))
-;            manager
-;            eids)))
 
 (defn paddle-movement-system [manager dt input]
   (em/update-components2 manager [:box :controls :paddle]
@@ -573,7 +552,11 @@
 (defn reset-entity-manager! [] (dosync (ref-set entity-manager base-entity-manager)))
 (defonce snapshot (ref {:input nil :entity-manager nil}))
 
-(defn reset-screen! [] (set-screen! (pong-screen entity-manager snapshot)))
+(defn reset-screen! [] 
+  ; Reset the mode implementations:
+  (dosync (alter entity-manager assoc-in [:meta :modes] modes)) 
+  ; Make a new screen, in case the old one is in a broken state:
+  (set-screen! (pong-screen entity-manager snapshot)))
 
 (defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover 'clong.core  :reload))
 (defn rr [] (rl)(reset-screen!))

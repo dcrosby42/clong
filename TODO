@@ -54,16 +54,59 @@ Features:
 Tech:
 - Bring "graph" plumbing library in?
 
---------------------
-A refactoring
---------------------
+---------------------------------------------------
+A refactoring that could happen
+---------------------------------------------------
 Timers:
   timer-system / timer component was general and nice
   expire-lasers, expire-explosions: separate code to make timed-out items vanish
   scored-timer: very special handling being done.
 
+---------------------------------------------------
+A refactoring that could happen
+---------------------------------------------------
+Move modes defs into their own ref(s)?
+  Since closing around the lists of systems for each mode,
+  the systems are now like a piece of state bound up inside the game state.
+  
+  Propose these two things vary independently; if I reload code that I want 
+  to run against current game state I have to update the modes.
 
 
+************************************
+;; Before update-components2:
+;(defn paddle-movement-system [manager dt input]
+;  (let [eids (em/entity-ids-with-component manager :paddle)]
+;    (reduce (fn [mgr eid] 
+;              (let [paddle (em/get-entity mgr eid)
+;                    controls (get paddle :controls)
+;                    v1 (calc-paddle-velocity paddle controls)
+;                    ]
+;                (em/update-component mgr eid :box assoc :velocity v1)))
+;            manager
+;            eids)))
+
+(defn paddle-movement-system [manager dt input]
+  (em/update-components2 manager [:box :controls :paddle]
+                         (fn [box controls paddle]
+                           (assoc box :velocity (calc-paddle-velocity {} controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
+    
+
+;; Before update-components2:
+;(defn controller-system [manager dt input]
+;  (let [eids (em/entity-ids-with-component manager :controller-mapping)]
+;    (reduce (fn [mgr eid] 
+;              (let [controller-mapping (em/get-entity-component mgr eid :controller-mapping)
+;                    controls (resolve-controls input controller-mapping)]
+;                (em/update-component mgr eid :controls (fn [_] controls))))
+;            manager
+;            eids)))
+
+(defn controller-system [manager dt input]
+  (em/update-components2 manager [:controls :controller-mapping]
+                         (fn [controls controller-mapping]
+                           (resolve-controls input controller-mapping))))
+************************************
 OLD Smells from pre-ECS refactoring:
 - UGH: fire laser
   Firing control knowledge is hiding inside update-paddle, but that function returns a paddle.  
