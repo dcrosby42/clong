@@ -70,7 +70,7 @@
 
 (defn search-components 
   "Finds entities with all the given component types, returns tuples with the component values.
-  The last element in the tuple is the entity id."
+  The first element in the tuple is the entity id."
   [manager component-types]
   (remove (fn [xs] (some nil? xs))
           (map (fn [mapentry]
@@ -96,13 +96,32 @@
   (first (search-entities manager component-type component-value)))
 
 (defn update-component
-  "Applies fn f to the component of the given entity id and updates the entity manager with the result.
+  "Updates the value of the ctype component for the given entity id by applying fn f to the component's current value.
   Extra args will be passed along to f when it is applied to the component.
   Example: 
     (update-component manager 'e101 :mover assoc :position [10 10])
   ...changes the :position value of e101's :mover component to [10 10]"
   [manager eid ctype f & args]
-  (apply update-in manager [eid ctype] f args))
+  (let [component (get-in manager [eid ctype])
+        component1 (apply f component args)]
+    (if (nil? component1)
+      (assoc manager eid (dissoc (get manager eid) ctype)) ;; no dissoc-in available by default
+      (assoc-in manager [eid ctype] component1))))
+
+(defn set-component
+  "Sets the value of the ctype component for the given entity id.
+  Extra args will be passed along to f when it is applied to the component.
+  The component may or may not already exist for the given entity id.
+  Example: 
+    (set-component manager 'e101 :slow-effect [0 -200])"
+  [manager eid ctype cvalue]
+  (assoc-in manager [eid ctype] cvalue))
+
+(defn remove-component
+  "Removes the ctype component for the given entity id."
+  [manager eid ctype]
+  (update-in manager [eid] #(dissoc %1 ctype)))
+
 
 (defn update-components 
   "Applies f to every component of the given type occurring in the entity manager."

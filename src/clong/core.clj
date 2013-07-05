@@ -175,17 +175,38 @@
                          (fn [controls controller-mapping]
                            (resolve-controls input controller-mapping))))
 
-(defn calc-paddle-velocity [paddle controls]
-    (let [speed (if (:slow-effect paddle) 100 300)
+(defn calc-paddle-velocity [controls]
+    (let [speed 300
           y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
       [0 y]))
-
 
 (defn paddle-movement-system [manager dt input]
   (em/update-components2 manager [:box :controls :paddle]
                          (fn [box controls paddle]
-                           (assoc box :velocity (calc-paddle-velocity {} controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
+                           (assoc box :velocity (calc-paddle-velocity controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
     
+
+;(defn- remove-slow-effect [ent slow-effect]
+;  (if (<= (:ttl slow-effect) 0)
+;    (dissoc :slow-effect ent)
+;    ent))
+;
+;(defn- apply-slow-effect [manager ent]
+;  (let [slow-effect (:slow-effect ent)
+;        ent1 (remove-slow-effect ent slow-effect)
+(defn- update-slow-effect-components [manager dt]
+  (em/update-components manager :slow-effect
+                        (fn [{ttl :ttl :as slow-effect}]
+                          (let [ttl1 (- ttl dt)]
+                            (if (<= ttl1 0)
+                              nil
+                              (assoc slow-effect :ttl ttl1))))))
+
+(defn slow-effect-system [manager dt input]
+  (let [manager1 (update-slow-effect-components manager dt)]
+    (em/update-components2 manager1 [:box :slow-effect]
+                           (fn [{[dx dy] :velocity :as box} {speed :speed}]
+                             (assoc box :velocity [(* dx speed) (* dy speed)])))))
 
 (defn fire-laser [manager paddle-id box]
     (let [{[paddle-x paddle-y] :position} box
@@ -233,16 +254,24 @@
           manager 
           (map :box lasers)))
 
+(defn add-slow-effect [manager ents slow-effect]
+  (reduce (fn [mgr eid] 
+            (em/set-component mgr eid :slow-effect slow-effect))
+          manager
+          (map :eid ents)))
+
 
 (defn collide-lasers-paddles [manager]
   (let [lasers (em/entities-with-component manager :laser)
         paddles (em/entities-with-component manager :paddle)
         hits (laser-paddle-hits lasers paddles)
         hit-lasers (map first hits)
+        hit-paddles (map second hits)
         done-laser-eids (map :eid hit-lasers)
         ]
     (-> manager
       (add-explosions hit-lasers)
+      (add-slow-effect hit-paddles {:speed 0.2 :ttl 2})
       (em/remove-entities done-laser-eids)
     )))
 
@@ -367,6 +396,7 @@
   (assoc default-mode :update (system-chain 
                                 controller-system
                                 paddle-movement-system
+                                slow-effect-system
                                 paddle-weapon-system
                                 box-mover-system
                                 explosion-system
