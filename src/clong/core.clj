@@ -544,7 +544,7 @@
 (defn reset-screen! [] 
   (set-screen! (pong-screen entity-manager snapshot)))
 
-(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover 'clong.core  :reload))
+(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover :reload)(use 'clong.core :reload))
 (defn rr [] (rl)(reset-screen!))
 (defn rs [] (rr)(reset-entity-manager!))
 
@@ -553,3 +553,22 @@
 
 (defn -main [& args]
   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Scratch:
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(def counters [(ref 0) (ref 0) (ref 0) (ref 0)])
+(defn update-counters [counters] 
+  (dosync
+    (doseq [ctr-ref counters]
+      (Thread/sleep 1000)
+      (alter ctr-ref inc)
+      (println "Updated counter to" @ctr-ref)
+      )))
+
+(defn bgth [f] (.start (Thread. (fn [] (f)))))
+(defn bg-update [] (bgth #(update-counters counters)))
