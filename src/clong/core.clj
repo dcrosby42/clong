@@ -16,12 +16,13 @@
      (com.badlogic.gdx.backends.lwjgl LwjglApplication)
      ))
 
+
+(declare modes)
+
 (defn get-mode [manager] (get-in manager [:meta :mode]))
-(defn get-modes [manager] (get-in manager [:meta :modes]))
 (defn set-mode [manager mode] (assoc-in manager [:meta :mode] mode))
 (defn change-to-mode [manager new-mode-id]
-  (let [modes       (get-modes manager)
-        old-mode-id (get-mode manager)
+  (let [old-mode-id (get-mode manager)
         old-mode    (old-mode-id modes)
         out-fn      (:out old-mode)
         new-mode    (new-mode-id modes)
@@ -40,7 +41,6 @@
 (def green [0 1 0 1])
 (def white [1 1 1 1])
 
-;(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
 
 (defn reset-ball [box] (assoc box :position [220 120] :velocity [30 60]))
 
@@ -186,14 +186,6 @@
                            (assoc box :velocity (calc-paddle-velocity controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
     
 
-;(defn- remove-slow-effect [ent slow-effect]
-;  (if (<= (:ttl slow-effect) 0)
-;    (dissoc :slow-effect ent)
-;    ent))
-;
-;(defn- apply-slow-effect [manager ent]
-;  (let [slow-effect (:slow-effect ent)
-;        ent1 (remove-slow-effect ent slow-effect)
 (defn- update-slow-effect-components [manager dt]
   (em/update-components manager :slow-effect
                         (fn [{ttl :ttl :as slow-effect}]
@@ -283,24 +275,10 @@
 
 
 
-;; Before update-components2:
-;(defn paddle-bounds-system [manager dt input]
-;  (let [eids (em/entity-ids-with-component manager :paddle)]
-;    (reduce (fn [mgr eid] 
-;              (em/update-component mgr eid :box (fn [{[x y] :position :as box}] 
-;                                                  (assoc box :position [x (clamp 0 270 y)]))))
-;            manager
-;            eids)))
-
 (defn paddle-bounds-system [manager dt input]
   (em/update-components2 manager [:box :paddle]
                       (fn [{[x y] :position :as box} paddle] 
                         (assoc box :position [x (clamp 0 270 y)]))))
-
-; Maybe a macro like this:
-;(defsystem paddle-bounds-system [:box :paddle] 
-;           [{[x y] :position :as box} paddle] 
-;             (assoc box :position [x (clamp 0 270 y)]))))
 
 (defn first-overlapping-goal [goals ball]
   (first (drop-while (fn [goal] (not (b/box-piercing-box? (b/to-box (:box ball)) (b/to-box (:box goal))))) goals)))
@@ -344,11 +322,6 @@
 (defn update-explosions [manager dt]
   (em/update-components manager :particles
                         (fn [particles] (map #(m/update-mover %1 dt) particles))))
-                        ;(fn [explosion] 
-                        ;  (println "update explosion:" explosion)
-                        ;  (assoc explosion :particles 
-                        ;                       (map #(m/update-mover %1 dt) 
-                        ;                            (:particles explosion))))))
 
 (defn explosion-system [manager dt input]
   (-> manager 
@@ -463,20 +436,6 @@
     ))
 
 
-(defn draw-level [shape-renderer camera font sprite-batch state]
-
-  ;; Draw block shapes:
-  ;(let [things (map (partial get state) [:red-paddle :green-paddle :ball])
-  ;      projectiles (get state :lasers)
-  ;      explosions (mapcat :particles (get state :explosions))
-  ;      blocks (concat things projectiles explosions)]
-  ;  (doall
-  ;    (map (partial draw-block shape-renderer) blocks)))
-
-  ;;; Scores etc
-  ;(draw-hud shape-renderer camera font sprite-batch state)
-  )
-;
 (defn box-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
   (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entity-ids-with-component manager :box)))]
       (draw-block shape-renderer box)))
@@ -526,7 +485,7 @@
        :render (fn [dt]
                  (dosync 
                    (let [input1 (next-input @input-events)            ;; Collect input
-                         mode-fns  (get (get-modes @entity-manager) (get-mode @entity-manager))
+                         mode-fns  (get modes (get-mode @entity-manager))
                          update-fn (get mode-fns :update)
                          
                          entity-manager1 (alter entity-manager update-fn dt input1)] ;; Update game state
@@ -552,7 +511,7 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def base-entity-manager (-> (em/manager)
-                           (assoc :meta {:mode :ready, :modes modes})
+                           (assoc :meta {:mode :ready})
 
                            (ball-entity)
                            (field-entity)
@@ -583,9 +542,6 @@
 (defonce snapshot (ref {:input nil :entity-manager nil}))
 
 (defn reset-screen! [] 
-  ; Reset the mode implementations:
-  (dosync (alter entity-manager assoc-in [:meta :modes] modes)) 
-  ; Make a new screen, in case the old one is in a broken state:
   (set-screen! (pong-screen entity-manager snapshot)))
 
 (defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover 'clong.core  :reload))
