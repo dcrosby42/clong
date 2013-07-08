@@ -15,18 +15,14 @@
   "Return a new, empty entity manager."
   [] {})
 
-(defn entity 
+(defn add-entity 
   "Accepts entity manager and a seq of components, creates a new entity in the manager
   based on those components.
   Returns the updated entity manager."
   [manager & opts]
   (let [eid (gen-eid)
-        ent (assoc (apply hash-map opts) :eid eid)]
-    (assoc manager eid ent)))
-
-(defn get-entity 
-  "Returns the component map for an entity in the given entity manager."
-  [manager eid] (get manager eid))
+        component-map (assoc (apply hash-map opts) :eid eid)]
+    (assoc manager eid (ref component-map))))
 
 (defn remove-entity 
   "Remove an entity and its components from the entity manager."
@@ -36,19 +32,29 @@
   "Remove entities and their components from the entity manager."
   [manager eids] (reduce remove-entity manager eids))
 
+(defn get-entity
+  "Returns the ref containing the component map for an entity in the given entity manager."
+  [manager eid] (get manager eid))
+
+(defn get-entity-components 
+  "Returns the component map for an entity in the given entity manager."
+  [manager eid] (deref (get manager eid)))
+
 (defn get-entity-component 
   "Return the component of the given type for an entity in the entity-manager."
   [manager eid ctype]
-  (get-in manager [eid ctype]))
+  (get (get-entity-components manager eid) ctype))
 
+(defn- has-component-type? [[_ ent-ref] component-type]
+  (contains? (deref ent-ref) component-type))
 
-(defn- has-component-type? [mapentry component-type]
-  (contains? (val mapentry) component-type))
+(defn- entries-with-component-type [manager component-type]
+  (filter #(has-component-type? %1 component-type) manager))
 
 (defn entity-ids-with-component 
   "Finds all entities having a component of the given type and returns a seq of their ids."
   [manager component-type]
-  (map key (filter #(has-component-type? %1 component-type) manager)))
+  (map key (entries-with-component-type manager component-type)))
 
 (defn entity-id-with-component 
   "Finds first entity id having a component of the given type."
@@ -58,9 +64,7 @@
 (defn entities-with-component 
   "Returns entities having a component of the given type."
   [manager component-type]
-  (map val
-       (filter (fn [mapentry] (contains? (val mapentry) component-type)) 
-               manager)))
+  (map val (entries-with-component-type manager component-type)))
 
 (defn entity-with-component 
   "Returns the first entity having a component of the given type."
@@ -73,10 +77,10 @@
   The first element in the tuple is the entity id."
   [manager component-types]
   (remove (fn [xs] (some nil? xs))
-          (map (fn [mapentry]
+          (map (fn [[eid ent-ref]]
                  (cons
-                   (key mapentry)
-                   (select-values (val mapentry) component-types)))
+                   eid
+                   (select-values @ent-ref component-types)))
                manager)))
 
 (defn search-entities
@@ -84,8 +88,8 @@
   Eg.  (seatch-entities mgr :id :red-paddle)
        => ({:eid e1403, :id :red-paddle, :position [10 50], :score 5}, ...)"
   [manager component-type component-value]
-  (filter (fn [entity] 
-            (some #(= %1 [component-type component-value]) entity)) 
+  (filter (fn [ent-ref] 
+            (some #(= %1 [component-type component-value]) @ent-ref)) 
           (vals manager)))
 
 (defn search-entity
@@ -102,12 +106,13 @@
     (update-component manager 'e101 :mover assoc :position [10 10])
   ...changes the :position value of e101's :mover component to [10 10]"
   [manager eid ctype f & args]
-  (let [component (get-in manager [eid ctype])
-        component1 (apply f component args)]
-    (if (nil? component1)
-      (assoc manager eid (dissoc (get manager eid) ctype)) ;; no dissoc-in available by default
-      (assoc-in manager [eid ctype] component1))))
-
+  (alter (get manager eid) 
+         (fn [{component ctype :as components}]
+           (let [component1 (apply f component args)]
+             (if (nil? component1)
+               (dissoc components ctype)
+               (assoc components ctype component1))))))
+                 
 (defn set-component
   "Sets the value of the ctype component for the given entity id.
   Extra args will be passed along to f when it is applied to the component.
@@ -115,13 +120,12 @@
   Example: 
     (set-component manager 'e101 :slow-effect [0 -200])"
   [manager eid ctype cvalue]
-  (assoc-in manager [eid ctype] cvalue))
+  (alter (get manager eid) assoc ctype cvalue))
 
 (defn remove-component
   "Removes the ctype component for the given entity id."
   [manager eid ctype]
-  (update-in manager [eid] #(dissoc %1 ctype)))
-
+  (alter (get manager eid) dissoc ctype))
 
 (defn update-components 
   "Applies f to every component of the given type occurring in the entity manager."

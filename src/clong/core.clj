@@ -19,16 +19,16 @@
 
 (declare modes)
 
-(defn get-mode [manager] (get-in manager [:meta :mode]))
-(defn set-mode [manager mode] (assoc-in manager [:meta :mode] mode))
+(defn get-mode [manager] (:mode (deref (:meta manager))))
+(defn set-mode [manager mode] (alter (:meta manager) assoc :mode mode))
 (defn change-to-mode [manager new-mode-id]
   (let [old-mode-id (get-mode manager)
         old-mode    (old-mode-id modes)
         out-fn      (:out old-mode)
         new-mode    (new-mode-id modes)
-        in-fn       (:in new-mode)
-        ]
-    (set-mode (in-fn (out-fn manager)) new-mode-id)))
+        in-fn       (:in new-mode)]
+    (dosync
+      (set-mode (in-fn (out-fn manager)) new-mode-id))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -45,33 +45,33 @@
 (defn reset-ball [box] (assoc box :position [220 120] :velocity [30 60]))
 
 (defn ball-entity [manager] 
-  (em/entity manager 
+  (em/add-entity manager 
              :ball []
              :box  (reset-ball {:size [10 10] :color white})))
 
 (defn field-entity [manager]
-  (em/entity manager
+  (em/add-entity manager
              :field []
              :box {:position [0 0] :size [480 320]}))
               
 (defn red-goal-entity [manager]
-  (em/entity manager
+  (em/add-entity manager
              :goal []
              :score-goes-to :green-paddle
              :box {:position [-20 0] :size [20 320]}))
 
 (defn green-goal-entity [manager]
-  (em/entity manager
+  (em/add-entity manager
              :goal []
              :score-goes-to :red-paddle
              :box {:position [480 0] :size [20 320]}))
 
 (defn goal-scored-entity [manager paddle-id]
-  (em/entity manager
+  (em/add-entity manager
              :goal-scored paddle-id))
               
 (defn red-paddle-entity [manager] 
-  (em/entity manager 
+  (em/add-entity manager 
              :paddle   []
              :id       :red-paddle
              :score    0
@@ -82,7 +82,7 @@
                                   :shoot [:pressed Input$Keys/E]}))
 
 (defn green-paddle-entity [manager] 
-  (em/entity manager 
+  (em/add-entity manager 
              :paddle   []
              :id       :green-paddle
              :score    0
@@ -93,7 +93,7 @@
                                   :shoot [:pressed Input$Keys/PERIOD]}))
 
 (defn game-control-entity [manager]
-  (em/entity manager
+  (em/add-entity manager
              :game-control []
              :id :game-control
              :controls {:start false}
@@ -102,12 +102,12 @@
             
 
 (defn scored-entity [manager ttl]
-  (em/entity manager
+  (em/add-entity manager
              :id :scored-timer
              :timer { :ttl ttl }))
           
 (defn laser-entity [manager {position :position, speed :speed, color :color, owner :owner}]
-  (em/entity manager
+  (em/add-entity manager
              :laser []
              :owner owner
              :box {:position position
@@ -118,7 +118,7 @@
 
 (defn explosion-entity [manager {:keys [position color] :or {color [1 1 1 1]} :as laser}]
   (let [particle {:position position :size [10 10] :size-change [-8 -8] :color color :velocity [-100 200] :accel [0 -600]}]
-    (em/entity manager
+    (em/add-entity manager
                :explosion []
                :timer {:ttl 0.8}
                :particles [(assoc particle :velocity [100 200])
@@ -437,7 +437,8 @@
 
 
 (defn box-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
-  (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity manager) (em/entity-ids-with-component manager :box)))]
+  (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity-components manager) 
+                                                                (em/entity-ids-with-component manager :box)))]
       (draw-block shape-renderer box)))
 
 (defn box-particle-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
@@ -511,7 +512,7 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def base-entity-manager (-> (em/manager)
-                           (assoc :meta {:mode :ready})
+                           (assoc :meta (ref {:mode :ready}))
 
                            (ball-entity)
                            (field-entity)
