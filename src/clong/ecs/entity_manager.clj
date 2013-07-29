@@ -9,11 +9,17 @@
   [] 
   (gensym 'e))
 
-;(def eid-seq (repeatedly gen-eid))
+(def eid-seq (repeatedly gen-eid))
 
 (defn manager 
   "Return a new, empty entity manager."
   [] {})
+
+(defn next-eid
+  "Retrieve the next entity id from the manager's predestined sequence, and return an updated manager."
+  [{[eid & eids-rest] :new-eids :as manager}] 
+              [(assoc manager :new-eids eids-rest) eid])
+                  
 
 (defn add-entity 
   "Accepts entity manager and a seq of components, creates a new entity in the manager
