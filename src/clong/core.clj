@@ -183,7 +183,7 @@
 (defn paddle-movement-system [manager dt input]
   (em/update-components2 manager [:box :controls :paddle]
                          (fn [box controls paddle]
-                           (assoc box :velocity (calc-paddle-velocity controls))))) ;; the first arg to calc-paddle-velocity is actually something that func uses to check for the slow effect
+                           (assoc box :velocity (calc-paddle-velocity controls))))) 
     
 
 (defn- update-slow-effect-components [manager dt]
