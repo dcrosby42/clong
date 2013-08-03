@@ -21,4 +21,7 @@
   [cstore eid component-type]
   (or (get-in cstore [component-type eid]) (list)))
 
-
+(defn get-all-components
+  "Get all components of component type, independent of entity"
+  [cstore component-type]
+  (apply concat (vals (get cstore component-type))))
