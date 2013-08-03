@@ -70,30 +70,46 @@
 
     )
 
-    (testing "get-all-components"
-      (testing "finds all components of a give type, independent of entity"
-        (let [pairs [['e1 :box   {:name "A"}]
-                     ['e1 :tiger {:name "Fred"}]
-                     ['e1 :box   {:name "B"}]
-                     ['e2 :truck {:name "Mater"}]
-                     ['e3 :box   {:name "C"}]
-                     ['e4 :box   {:name "D"}]
-                     ['e5 :truck {:name "Mack"}]]
-              cmps   (map #(apply cs/component %1) pairs)
-              cstore1 (reduce cs/add-component cstore cmps)
+    (let [_pairs [['e1 :box   {:name "A"}]
+                 ['e1 :tiger {:name "Fred"}]
+                 ['e1 :box   {:name "B"}]
+                 ['e3 :truck {:name "Mater"}]
+                 ['e3 :box   {:name "C"}]
+                 ['e4 :box   {:name "D"}]
+                 ['e5 :truck {:name "Mack"}]
+                 ['e5 :box   {:name "E"}]]
+          _cmps  (map #(apply cs/component %1) _pairs)
+          cstore (reduce cs/add-component cstore _cmps)]
+      (testing "get-all-components"
+        (testing "finds all components of a give type, independent of entity"
+          (let [boxes  (cs/get-all-components cstore :box)
+                box-names  (set (map (comp :name deref) boxes))
 
-              boxes  (cs/get-all-components cstore1 :box)
-              box-names  (set (map (comp :name deref) boxes))
+                trucks (cs/get-all-components cstore :truck)
+                truck-names (set (map (comp :name deref) trucks))]
 
-              trucks (cs/get-all-components cstore1 :truck)
-              truck-names (set (map (comp :name deref) trucks))]
+            (is (= box-names #{"A" "B" "C" "D" "E"}))
+            (is (= truck-names #{"Mater" "Mack"}))
+            ))
 
-          (is (= box-names #{"A" "B" "C" "D"}))
-          (is (= truck-names #{"Mater" "Mack"}))
-          ))
+        (testing "returns empty list if no components of the given type exist"
+          (is (= 0 (count (cs/get-all-components cstore :whatevs))))))
 
-      (testing "returns empty list if no components of the given type exist"
-        (is (= 0 (count (cs/get-all-components cstore :whatevs))))))
+      (testing "with-components-linked-by-entity"
+        (testing "visits tuples of 2 components linked by entity, only when both components are present"
+          (let [captured  (cs/with-components-linked-by-entity cstore [:box :truck] 
+                     (fn [box-ref truck-ref] [(:name @box-ref) (:name @truck-ref)]))]
 
-    )); end deftest
+            (is (= #{["E" "Mack"] ["C" "Mater"]} (set captured))))
+          )
+
+        (testing "visits tuples of 3 components linked by entity"
+          )
+
+        )
+      )
+
+      )); end deftest
+
+
 
