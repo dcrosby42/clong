@@ -1,21 +1,24 @@
 (ns clong.ecs.component-store
   (:require 
      [clong.utils :refer :all]
+     [plumbing.core :refer :all]
      ))
 
 (defn component-store [] {})
 
-(defn- append-component-ref [clist c]
-  (cons (ref c) clist))
+(defn component [eid type & [attrs]]
+  (ref (merge attrs {:eid eid :type type})))
 
 (defn add-component 
-  [cst eid c] 
-  (update-in cst [(get c :type) eid] append-component-ref (assoc c :eid eid)))
+  [cstore component-ref] 
+  (let [component-type (get @component-ref :type)
+        eid            (get @component-ref :eid)]
+    (update-in cstore [component-type eid] #(cons component-ref %1))))
 
 (defn get-components 
-  "Get the ctype components for the given entity.
+  "Get the components of component-type for the given entity.
   Returns list of component refs, or empty list if entity not found or entity has no such components."
-  [cst eid ctype]
-  (or (get-in cst [ctype eid]) (list)))
+  [cstore eid component-type]
+  (or (get-in cstore [component-type eid]) (list)))
 
 

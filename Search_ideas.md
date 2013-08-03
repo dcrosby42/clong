@@ -193,7 +193,16 @@ box-mover-system
 	[:box]  ->  (upfunc [box dt]  
 	                 (m/update-mover box dt))
 
-	[:box [include? :tags :paddle]] -> (upfunc [[:box position ]])
+paddle-bounds-system
+
+	Search    [:box [include? :tags :paddle]] 
+	Updates   box 
+	Using     (upfunc [[:box position :as box]]
+	                                      (assoc box :position [x (clamp 0 270 y)]))
+
+ball-cieling-system
+
+	[:box [:tags include :ball]] -> (upfunc ])
 	
 ## Could I use Graph?
 
