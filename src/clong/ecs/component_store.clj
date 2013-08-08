@@ -4,22 +4,33 @@
      [plumbing.core :refer :all]
      ))
 
-(defn component-store [] {})
+(defn component-store 
+  "Create a new, empty component store.
+  Returns a new ref."
+  [] 
+  (ref {}))
 
-(defn component [eid type & [attrs]]
-  (ref (merge attrs {:eid eid :type type})))
+(defn component 
+  "Create a component with :eid and :type fields merged onto attrs-map. 
+  Returns a new ref."
+  [eid type & [attrs-map]]
+  (ref (merge attrs-map {:eid eid :type type})))
 
 (defn add-component 
+  "Add a component (which is a ref) to an entity based on component's :eid.
+  Entity will be created if needed.
+  Modifies the cstore ref with resulting component store structure.
+  Returns the resulting cstore value."
   [cstore component-ref] 
   (let [component-type (:type @component-ref)
         eid            (:eid  @component-ref)]
-    (update-in cstore [component-type eid] #(cons component-ref %1))))
+    (alter cstore update-in [component-type eid] #(cons component-ref %1))))
 
 (defn get-components-for-entity 
   "Get the components of component-type for the given entity.
   Returns list of component refs, or empty list if entity not found or entity has no such components."
   [cstore eid component-type]
-  (or (get-in cstore [component-type eid]) (list)))
+  (or (get-in @cstore [component-type eid]) (list)))
 
 (def get-component-for-entity 
   "([cstore eid component-type])
@@ -30,7 +41,7 @@
 (defn get-components
   "Get all components of component type, independent of entity"
   [cstore component-type]
-  (apply concat (vals (get cstore component-type))))
+  (apply concat (vals (get @cstore component-type))))
 
 (defn map-components
   "For each entity containing components of all given component types, apply
@@ -66,17 +77,16 @@
    ))
 
 
-(def tcs (let [ pairs[['e1 :box   {:name "A"}]
-                      ['e1 :tiger {:name "Fred"}]
-                      ['e1 :box   {:name "B"}]
-                      ['e2 :truck {:name "Mater"}]
-                      ['e2 :box   {:name "C"}]
-                      ['e4 :box   {:name "D"}]
-                      ['e5 :truck {:name "Mack"}]
-                      ['e5 :box   {:name "E"}]
-                      ]
-               ]
-           (reduce add-component 
-                   (component-store) 
-                   (map #(apply component %1) pairs))))
+(def tcs 
+  (let [mk-cstore (fn [cmps] (let [cstore (component-store)]
+                               (dosync (doseq [c cmps] (add-component cstore c)))))
+        mk-comps (fn [pairs] (map #(apply component %1) pairs))]
+    (mk-cstore (mk-comps [['e1 :box   {:name "A"}]
+                         ['e1 :tiger {:name "Fred"}]
+                         ['e1 :box   {:name "B"}]
+                         ['e2 :truck {:name "Mater"}]
+                         ['e2 :box   {:name "C"}]
+                         ['e4 :box   {:name "D"}]
+                         ['e5 :truck {:name "Mack"}]
+                         ['e5 :box   {:name "E"}]] ))))
  
