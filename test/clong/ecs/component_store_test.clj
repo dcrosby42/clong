@@ -18,11 +18,11 @@
       )
 
     (testing 
-      "add-component and get-components"
+      "add-component and get-components-for-entity"
       (testing "associates a component to the given entity"
         (let [cmp (cs/component 'entity1 :thing)
               cstore1 (cs/add-component cstore cmp)
-              comps   (cs/get-components cstore1 'entity1 :thing)]
+              comps   (cs/get-components-for-entity cstore1 'entity1 :thing)]
           (is (= 1 (count comps)))
           (is (= (deref cmp) (deref (first comps))))
           ))
@@ -32,8 +32,8 @@
               cmp-y (cs/component 'entity1 :y-type {:name "Ms. Y"})
               cstore1 (cs/add-component cstore cmp-x)
               cstore2 (cs/add-component cstore1 cmp-y)
-              x-comps   (cs/get-components cstore2 'entity1 :x-type)
-              y-comps   (cs/get-components cstore2 'entity1 :y-type) ]
+              x-comps   (cs/get-components-for-entity cstore2 'entity1 :x-type)
+              y-comps   (cs/get-components-for-entity cstore2 'entity1 :y-type) ]
           (is (= 1 (count x-comps)))
           (is (= @cmp-x (deref (first x-comps))))
           (is (= 1 (count y-comps)))
@@ -44,7 +44,7 @@
               cmp-b   (cs/component 'entity1 :thing {:name "B"})
               cstore1 (cs/add-component cstore cmp-a)
               cstore2 (cs/add-component cstore1 cmp-b)
-              comps   (cs/get-components cstore2 'entity1 :thing) ]
+              comps   (cs/get-components-for-entity cstore2 'entity1 :thing) ]
           (is (= 2 (count comps)))
           (is (= @cmp-b (deref (first comps))))
           (is (= @cmp-a (deref (second comps))))))
@@ -58,8 +58,8 @@
 
               cstore1 (reduce cs/add-component cstore [cmp-1a cmp-1b cmp-2a cmp-2b])
 
-              e1-comps   (cs/get-components cstore1 'entity1 :thing)
-              e2-comps   (cs/get-components cstore1 'entity2 :thing)]
+              e1-comps   (cs/get-components-for-entity cstore1 'entity1 :thing)
+              e2-comps   (cs/get-components-for-entity cstore1 'entity2 :thing)]
           (is (= 2 (count e1-comps)))
           (is (= @cmp-1b (deref (first e1-comps))))
           (is (= @cmp-1a (deref (second e1-comps))))
@@ -96,10 +96,10 @@
         (testing "returns empty list if no components of the given type exist"
           (is (= 0 (count (cs/get-all-components cstore :whatevs))))))
 
-      (testing "with-components-linked-by-entity"
+      (testing "map-components"
         (testing "visits 'tuples' of 1 component linked by entity, only when both components are present"
           (let [getem (fn [ctype1] 
-                         (set (cs/with-components-linked-by-entity cstore (fn [a] (:name @a)) ctype1)))]
+                         (set (cs/map-components cstore (fn [a] (:name @a)) ctype1)))]
             (is (= #{"A" "B" "C" "D" "E"} (getem :box)))
             (is (= #{"Fred" "Jameson"} (getem :tiger)))
             (is (= #{} (getem :hog)))
@@ -108,7 +108,7 @@
 
         (testing "visits tuples of 2 components linked by entity, only when both components are present"
           (let [getem2 (fn [ctype1 ctype2]
-                         (set (cs/with-components-linked-by-entity cstore (fn [a b] [(:name @a) (:name @b)]) ctype1 ctype2))) ]
+                         (set (cs/map-components cstore (fn [a b] [(:name @a) (:name @b)]) ctype1 ctype2))) ]
             (is (= #{["E" "Mack"] ["C" "Mater"]} (getem2 :box :truck)))
             (is (= #{["A" "Fred"] ["B" "Fred"] ["E" "Jameson"]} (getem2 :box :tiger)))
             (is (= #{["A" "A"] ["A" "B"] ["B" "A"] ["B" "B"] 
@@ -118,7 +118,7 @@
 
         (testing "visits tuples of 3 components linked by entity"
           (let [getem3 (fn [ctype1 ctype2 ctype3]
-                         (set (cs/with-components-linked-by-entity cstore (fn [a b c] [(:name @a) (:name @b) (:name @c)]) ctype1 ctype2 ctype3)))]
+                         (set (cs/map-components cstore (fn [a b c] [(:name @a) (:name @b) (:name @c)]) ctype1 ctype2 ctype3)))]
             (is (= #{["E" "Mack" "Jameson"]} (getem3 :box :truck :tiger)))
             )
           )

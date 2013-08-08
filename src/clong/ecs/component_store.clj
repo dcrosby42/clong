@@ -15,36 +15,36 @@
         eid            (get @component-ref :eid)]
     (update-in cstore [component-type eid] #(cons component-ref %1))))
 
-(defn get-components 
+(defn get-components-for-entity 
   "Get the components of component-type for the given entity.
   Returns list of component refs, or empty list if entity not found or entity has no such components."
   [cstore eid component-type]
   (or (get-in cstore [component-type eid]) (list)))
 
-(defn get-all-components
+(defn get-components
   "Get all components of component type, independent of entity"
   [cstore component-type]
   (apply concat (vals (get cstore component-type))))
 
-(defn with-components-linked-by-entity
+(defn map-components
   "For each entity containing components of all given component types, apply
   f to each combination of components within each entity."
 
   ; Single component
   ([cstore f ctype]
-   (map f (get-all-components cstore ctype)))
+   (map f (get-components cstore ctype)))
   
   ; Two components
   ([cstore f ctype1 ctype2]
-   (for [c1 (get-all-components cstore ctype1)
-         c2 (get-components cstore (get @c1 :eid) ctype2)]
+   (for [c1 (get-components cstore ctype1)
+         c2 (get-components-for-entity cstore (:eid @c1) ctype2)]
         (f c1 c2)))
 
   ; Three components
   ([cstore f ctype1 ctype2 ctype3]
-   (for [c1 (get-all-components cstore ctype1)
-         c2 (get-components cstore (get @c1 :eid) ctype2)
-         c3 (get-components cstore (get @c1 :eid) ctype3)]
+   (for [c1 (get-components cstore ctype1)
+         c2 (get-components-for-entity cstore (:eid @c1) ctype2)
+         c3 (get-components-for-entity cstore (:eid @c1) ctype3)]
      (f c1 c2 c3)))
     )
 
