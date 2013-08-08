@@ -27,7 +27,8 @@
   (apply concat (vals (get cstore component-type))))
 
 (defn with-components-linked-by-entity
-  ""
+  "For each entity containing components of all given component types, apply
+  f to each combination of components within each entity."
   [cstore [ctype1 ctype2] f]
   (for [c1 (get-all-components cstore ctype1)
         c2 (get-components cstore (get @c1 :eid) ctype2)]

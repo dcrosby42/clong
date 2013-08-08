@@ -35,6 +35,32 @@
 * Like it? **yes**. Handles semi-complex tasks, easy to express input spec and update logic clearly
 * Drawbacks: abused a little by adding component types to the tuples (and the entities themselves) in order to cludge-in a bit of entity filtering
 
+### Read / Write non-component data via Manager's :meta, eg, :meta :mode
+
+**game-control-system**
+
+Searches [:controls :game-controls] (which is fine) though via search-components, as opposed to update-components2.
+
+**BAD:** uses get-mode and change-to-mode to manipulate game mode in :meta.  
+
+## Kinds of State
+I'm recognizing some different "layers" of state and changes.
+
+"Context"?
+
+State:
+
+- Core game state: vehicles, trees, laser beams, timers, particles, score, map, environment
+- Meta state: system composition(?), game mode, controller input mapping
+- Framework state: screen size, Application, Screen, physics engine, resource loader
+
+### Core Game State
+What is happening in the game right now.  Where things are, what they've got, who's winning, how damaged a tree is, particle velocities in the exploding boat house.
+
+Easy to represent in a "closed" ECS setup, purely functional even.  Game state can be represented as a valie. update can be a (system of) pure function(s) that accepts a set of world values (instantaneous input signal values, world time, dt, network msg queue)
+and prior state as input, and generate the next game state value.
+
+m
 
 ## Existing Systems
 
