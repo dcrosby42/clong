@@ -29,10 +29,19 @@
 (defn with-components-linked-by-entity
   "For each entity containing components of all given component types, apply
   f to each combination of components within each entity."
-  [cstore [ctype1 ctype2] f]
-  (for [c1 (get-all-components cstore ctype1)
-        c2 (get-components cstore (get @c1 :eid) ctype2)]
-    (f c1 c2)))
+  [cstore ctypes f]
+  (case (count ctypes)
+    1 (map f (get-all-components cstore (first ctypes)))
+    2 (for [c1 (get-all-components cstore (first ctypes))
+            c2 (get-components cstore (get @c1 :eid) (second ctypes))]
+        (f c1 c2))
+    3 (let [[ctype1 ctype2 ctype3] ctypes]
+        (for [c1 (get-all-components cstore ctype1)
+              c2 (get-components cstore (get @c1 :eid) ctype2)
+              c3 (get-components cstore (get @c1 :eid) ctype3)]
+          (f c1 c2 c3)))
+    
+    ))
 
 (def tcs (let [ pairs[['e1 :box   {:name "A"}]
                       ['e1 :tiger {:name "Fred"}]

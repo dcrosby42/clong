@@ -77,7 +77,8 @@
                  ['e3 :box   {:name "C"}]
                  ['e4 :box   {:name "D"}]
                  ['e5 :truck {:name "Mack"}]
-                 ['e5 :box   {:name "E"}]]
+                 ['e5 :box   {:name "E"}]
+                 ['e5 :tiger   {:name "Jameson"}]]
           _cmps  (map #(apply cs/component %1) _pairs)
           cstore (reduce cs/add-component cstore _cmps)]
       (testing "get-all-components"
@@ -96,14 +97,31 @@
           (is (= 0 (count (cs/get-all-components cstore :whatevs))))))
 
       (testing "with-components-linked-by-entity"
-        (testing "visits tuples of 2 components linked by entity, only when both components are present"
-          (let [captured  (cs/with-components-linked-by-entity cstore [:box :truck] 
-                     (fn [box-ref truck-ref] [(:name @box-ref) (:name @truck-ref)]))]
+        (testing "visits 'tuples' of 1 component linked by entity, only when both components are present"
+          (let [getem (fn [ctypes] 
+                         (set (cs/with-components-linked-by-entity cstore ctypes (fn [a] 
+                                                                                   (:name @a))))) ]
+            (is (= #{"A" "B" "C" "D" "E"} (getem [:box])))
+            (is (= #{"Fred" "Jameson"} (getem [:tiger])))
+            (is (= #{} (getem [:hog])))
+            )
+          )
 
-            (is (= #{["E" "Mack"] ["C" "Mater"]} (set captured))))
+        (testing "visits tuples of 2 components linked by entity, only when both components are present"
+          (let [getem2 (fn [ctypes]
+                         (set (cs/with-components-linked-by-entity cstore ctypes (fn [a b] [(:name @a) (:name @b)])))) ]
+            (is (= #{["E" "Mack"] ["C" "Mater"]} (getem2 [:box :truck])))
+            (is (= #{["A" "Fred"] ["B" "Fred"] ["E" "Jameson"]} (getem2 [:box :tiger])))
+            (is (= #{["A" "A"] ["A" "B"] ["B" "A"] ["B" "B"] 
+                     ["C" "C"] ["D" "D"] ["E" "E"]} (getem2 [:box :box])))
+            )
           )
 
         (testing "visits tuples of 3 components linked by entity"
+          (let [getem3 (fn [ctypes]
+                         (set (cs/with-components-linked-by-entity cstore ctypes (fn [a b c] [(:name @a) (:name @b) (:name @c)])))) ]
+            (is (= #{["E" "Mack" "Jameson"]} (getem3 [:box :truck :tiger])))
+            )
           )
 
         )
