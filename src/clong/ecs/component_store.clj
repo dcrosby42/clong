@@ -21,6 +21,12 @@
   [cstore eid component-type]
   (or (get-in cstore [component-type eid]) (list)))
 
+(def get-component-for-entity 
+  "([cstore eid component-type])
+  Gets the component of component-type for the given entity.
+  Returns nil if not entity not found, of if no component of the given type is attached to the entity."
+  (comp first get-components-for-entity))
+
 (defn get-components
   "Get all components of component type, independent of entity"
   [cstore component-type]
@@ -47,6 +53,13 @@
          c3 (get-components-for-entity cstore (:eid @c1) ctype3)]
      (f c1 c2 c3)))
     )
+
+(defn update-components
+  "Find and alter component refs by applying f to their current values."
+  ([cstore f ctype]
+     (dorun (map-components cstore #(alter %1 f) ctype))
+   ))
+
 
 (def tcs (let [ pairs[['e1 :box   {:name "A"}]
                       ['e1 :tiger {:name "Fred"}]

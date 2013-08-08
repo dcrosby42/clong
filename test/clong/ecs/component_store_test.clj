@@ -69,6 +69,7 @@
           (is (= @cmp-2a (deref (second e2-comps))))))
 
     )
+    )
 
     (let [_pairs [['e1 :box   {:name "A"}]
                  ['e1 :tiger {:name "Fred"}]
@@ -80,7 +81,7 @@
                  ['e5 :box   {:name "E"}]
                  ['e5 :tiger   {:name "Jameson"}]]
           _cmps  (map #(apply cs/component %1) _pairs)
-          cstore (reduce cs/add-component cstore _cmps)]
+          cstore (reduce cs/add-component (cs/component-store) _cmps)]
       (testing "get-all-components"
         (testing "finds all components of a give type, independent of entity"
           (let [boxes  (cs/get-all-components cstore :box)
@@ -126,7 +127,25 @@
         )
       )
 
-      )); end deftest
+      (let [_pairs [['e1 :box    {:name "A" :counter 0}]
+                    ['e1 :kitteh {:name "Jameson" :counter 0}]
+                    ['e2 :box    {:name "B" :counter 0}]
+                    ['e2 :kitteh {:name "Fred" :counter 0}]]
+            mk-cstore (fn [] (reduce cs/add-component (cs/component-store)
+                                     (map #(apply cs/component %1) _pairs)))]
+        (testing "update-components"
+          (let [cstore (mk-cstore)
+                countup (fn [m] (assoc m :counter (inc (:counter m))))]
+            (dosync
+              (cs/update-components cstore countup :box))
+            (is (= 1 (:counter @(cs/get-component-for-entity cstore 'e1 :box))))
+            (is (= 1 (:counter @(cs/get-component-for-entity cstore 'e2 :box))))
+            (is (= 0 (:counter @(cs/get-component-for-entity cstore 'e1 :kitteh))))
+            (is (= 0 (:counter @(cs/get-component-for-entity cstore 'e1 :kitteh))))
+            ))
+
+  )
+); end deftest
 
 
 
