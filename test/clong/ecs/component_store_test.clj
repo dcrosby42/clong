@@ -127,23 +127,43 @@
         )
       )
 
-      (let [_pairs [['e1 :box    {:name "A" :counter 0}]
-                    ['e1 :kitteh {:name "Jameson" :counter 0}]
-                    ['e2 :box    {:name "B" :counter 0}]
-                    ['e2 :kitteh {:name "Fred" :counter 0}]]
+      (let [_pairs [['e1 :fish    {:name "Trout" :counter 2}]
+                    ['e1 :cat {:name "Jameson" :counter 20}]
+                    ['e2 :fish    {:name "Salmon" :counter 6}]
+                    ['e2 :cat {:name "Fred" :counter 10}]]
             mk-cstore (fn [] (reduce cs/add-component (cs/component-store)
                                      (map #(apply cs/component %1) _pairs)))]
         (testing "update-components"
-          (let [cstore (mk-cstore)
-                countup (fn [m] (assoc m :counter (inc (:counter m))))]
-            (dosync
-              (cs/update-components cstore countup :box))
-            (is (= 1 (:counter @(cs/get-component-for-entity cstore 'e1 :box))))
-            (is (= 1 (:counter @(cs/get-component-for-entity cstore 'e2 :box))))
-            (is (= 0 (:counter @(cs/get-component-for-entity cstore 'e1 :kitteh))))
-            (is (= 0 (:counter @(cs/get-component-for-entity cstore 'e1 :kitteh))))
-            ))
 
+          (testing "can seek by component type and update that component"
+            (let [cstore (mk-cstore)
+                  countup (fn [m] (assoc m :counter (inc (:counter m))))]
+              (dosync
+                (cs/update-components cstore countup :fish))
+              (is (= 3 (:counter @(cs/get-component-for-entity cstore 'e1 :fish))))
+              (is (= 7 (:counter @(cs/get-component-for-entity cstore 'e2 :fish))))
+              (is (= 20 (:counter @(cs/get-component-for-entity cstore 'e1 :cat))))
+              (is (= 10 (:counter @(cs/get-component-for-entity cstore 'e2 :cat))))
+
+              (dosync
+                (cs/update-components cstore countup :cat))
+              (is (= 3 (:counter @(cs/get-component-for-entity cstore 'e1 :fish))))
+              (is (= 7 (:counter @(cs/get-component-for-entity cstore 'e2 :fish))))
+              (is (= 21 (:counter @(cs/get-component-for-entity cstore 'e1 :cat))))
+              (is (= 11 (:counter @(cs/get-component-for-entity cstore 'e2 :cat))))
+              ))
+
+          (testing "can seek by multiple component types and update the first component"
+            (let [cstore (mk-cstore)
+                  eat-fish (fn [cat fish] (assoc cat :counter (+ (:counter cat) (:counter fish))))]
+              (dosync
+                (cs/update-components cstore eat-fish :cat :fish))
+              (is (= 2 (:counter @(cs/get-component-for-entity cstore 'e1 :fish))))
+              (is (= 6 (:counter @(cs/get-component-for-entity cstore 'e2 :fish))))
+              (is (= 22 (:counter @(cs/get-component-for-entity cstore 'e1 :cat))))
+              (is (= 16 (:counter @(cs/get-component-for-entity cstore 'e2 :cat))))
+              ))
+        )       
   )
 ); end deftest
 

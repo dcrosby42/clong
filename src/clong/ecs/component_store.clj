@@ -11,8 +11,8 @@
 
 (defn add-component 
   [cstore component-ref] 
-  (let [component-type (get @component-ref :type)
-        eid            (get @component-ref :eid)]
+  (let [component-type (:type @component-ref)
+        eid            (:eid  @component-ref)]
     (update-in cstore [component-type eid] #(cons component-ref %1))))
 
 (defn get-components-for-entity 
@@ -55,9 +55,14 @@
     )
 
 (defn update-components
-  "Find and alter component refs by applying f to their current values."
-  ([cstore f ctype]
-     (dorun (map-components cstore #(alter %1 f) ctype))
+  "Find and alter component refs by applying f to their current values.
+  If multiple components types are specified, tuples of component values are provided to f as
+  they match up within entities; only the component ref corresponding to the left-most component
+  type will be altered."
+  ([cstore f & ctypes]
+     (dorun (apply map-components cstore 
+                   (fn [ cmp1-ref & other-refs] (apply alter cmp1-ref f (map deref other-refs))) 
+                   ctypes))
    ))
 
 
