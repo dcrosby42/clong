@@ -80,12 +80,14 @@
                               [['e1 :box   {:name "A"}]
                                ['e1 :tiger {:name "Fred"}]
                                ['e1 :box   {:name "B"}]
+                               ['e2 :boss  {:name "Great Huntress"}]
                                ['e3 :truck {:name "Mater"}]
                                ['e3 :box   {:name "C"}]
                                ['e4 :box   {:name "D"}]
                                ['e5 :truck {:name "Mack"}]
                                ['e5 :box   {:name "E"}]
-                               ['e5 :tiger   {:name "Jameson"}]]) )]
+                               ['e5 :tiger   {:name "Jameson"}]
+                               ['w  :map   {:name "The Map"}]]) )]
 
       (testing "get-components"
 
@@ -156,6 +158,40 @@
 
               ))
         )
+
+        (testing "map-components'"
+          (testing "it can perform one component search"
+            (let [truck-result (cs/map-components' cstore (fn [[truck]] (:name @truck)) [:truck])
+                  tiger-result (cs/map-components' cstore (fn [[tiger]] (:name @tiger)) [:tiger])]
+              (is (= 2 (count truck-result)))
+              (is (= #{"Mater" "Mack"} (set truck-result)))
+              (is (= 2 (count tiger-result)))
+              (is (= #{"Fred" "Jameson"} (set tiger-result)))))
+
+          (testing "it can combine two component searches"
+            (let [truck-result (cs/map-components' cstore 
+                                                   (fn [[the-map] [truck box]] (str (:name @truck) " " (:name @box) " is on " (:name @the-map)))
+                                                   [:map] [:truck :box])]
+              (is (= 2 (count truck-result)))
+              (is (= #{"Mack E is on The Map", "Mater C is on The Map"} (set truck-result)))
+              ))
+
+          (testing "it can combine two component searches"
+            (let [truck-result (cs/map-components' cstore 
+                                                   (fn [[the-map] [truck box]] (str (:name @truck) " " (:name @box) " is on " (:name @the-map)))
+                                                   [:map] [:truck :box])]
+              (is (= 2 (count truck-result)))
+              (is (= #{"Mack E is on The Map", "Mater C is on The Map"} (set truck-result)))
+              ))
+
+          (testing "it can combine three component searches"
+            (let [truck-result (cs/map-components' cstore 
+                                                   (fn [[the-map] [truck box] [boss]] (str (:name @truck) " " (:name @box) " is on " (:name @the-map) " and the boss is " (:name @boss)))
+                                                   [:map] [:truck :box] [:boss])]
+              (is (= 2 (count truck-result)))
+              (is (= #{"Mack E is on The Map and the boss is Great Huntress", "Mater C is on The Map and the boss is Great Huntress"} (set truck-result)))
+              ))
+          )
       )
 
       (let [mk-kittehs (fn [] 

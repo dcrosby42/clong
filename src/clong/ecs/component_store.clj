@@ -69,6 +69,26 @@
      (f c1 c2 c3)))
     )
 
+(defn map-components'
+  "Combine component searches across multiple entities."
+
+  ; Single component search
+  ([cstore f s1]
+   (map f (apply map-components cstore vector s1)))
+  
+  ; Combine two component searches
+  ([cstore f s1 s2]
+   (for [c1 (apply map-components cstore vector s1)
+         c2 (apply map-components cstore vector s2)]
+     (f c1 c2)))
+  
+  ; Combine three component searches
+  ([cstore f s1 s2 s3]
+   (for [c1 (apply map-components cstore vector s1)
+         c2 (apply map-components cstore vector s2)
+         c3 (apply map-components cstore vector s3)]
+     (f c1 c2 c3))))
+
 (defn update-components
   "Find and alter component refs by applying f to their current values.
   If multiple components types are specified, tuples of component values are provided to f as
@@ -83,14 +103,28 @@
 
 (def tcs 
   (let [mk-cstore (fn [cmps] (let [cstore (component-store)]
-                               (dosync (doseq [c cmps] (add-component cstore c)))))
+                               (dosync (doseq [c cmps] (add-component cstore c)))
+                               cstore))
         mk-comps (fn [pairs] (map #(apply component %1) pairs))]
     (mk-cstore (mk-comps [['e1 :box   {:name "A"}]
                          ['e1 :tiger {:name "Fred"}]
                          ['e1 :box   {:name "B"}]
                          ['e2 :truck {:name "Mater"}]
                          ['e2 :box   {:name "C"}]
+                         ['e2 :player {:name "Dave"}]
                          ['e4 :box   {:name "D"}]
                          ['e5 :truck {:name "Mack"}]
-                         ['e5 :box   {:name "E"}]] ))))
- 
+                         ['e5 :box   {:name "E"}]
+                         ['ww :map   {:name "The Map"}]
+                          ] ))))
+(defn _go []
+  (let [tellme (fn [[themap] [tiger] [truck box]] (println "Visiting" (:name themap) "for big kitteh" (:name tiger) ": trying truck" (:name truck) "whose box is" (:name box)))
+        v1     (fn [a] [@a])
+        v2     (fn [a b] [@a @b])
+        ]
+
+     (doseq [tiger     (map-components tcs v1 :tiger) 
+             truck-box (map-components tcs v2 :truck :box) 
+             themap    (map-components tcs v1 :map)] 
+       (tellme themap tiger truck-box))))
+
