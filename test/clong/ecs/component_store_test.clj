@@ -118,8 +118,7 @@
                          (set (cs/map-components cstore (fn [a b] [(:name @a) (:name @b)]) ctype1 ctype2))) ]
             (is (= #{["E" "Mack"] ["C" "Mater"]} (getem2 :box :truck)))
             (is (= #{["A" "Fred"] ["B" "Fred"] ["E" "Jameson"]} (getem2 :box :tiger)))
-            (is (= #{["A" "A"] ["A" "B"] ["B" "A"] ["B" "B"] 
-                     ["C" "C"] ["D" "D"] ["E" "E"]} (getem2 :box :box)))
+            (is (= #{["A" "B"] ["B" "A"]} (getem2 :box :box)))
             )
           )
 
@@ -127,9 +126,35 @@
           (let [getem3 (fn [ctype1 ctype2 ctype3]
                          (set (cs/map-components cstore (fn [a b c] [(:name @a) (:name @b) (:name @c)]) ctype1 ctype2 ctype3)))]
             (is (= #{["E" "Mack" "Jameson"]} (getem3 :box :truck :tiger)))
-            )
-          )
+            ))
 
+        (testing "does not combine components with themselves" 
+          ;; ...but currently still does full permutation beyond that.
+          ;; IDEALLY I'd like ["A" "B"] to preclude ["B" "A"], that is, to reduce positional symmetry 
+          (let [cstore (mk-cstore (mk-comps 
+                                      [['e1 :card   {:name "Visa"}]
+                                       ['e1 :card   {:name "Master"}]
+                                       ['e1 :card   {:name "Amex"}]]))
+                  getem3 (fn [ctype1 ctype2 ctype3]
+                           (set (cs/map-components cstore (fn [a b c] [(:name @a) (:name @b) (:name @c)]) ctype1 ctype2 ctype3)))
+                  getem2 (fn [ctype1 ctype2]
+                           (set (cs/map-components cstore (fn [a b] [(:name @a) (:name @b)]) ctype1 ctype2))) 
+                  ]
+              (is (= #{["Visa" "Master" "Amex"] 
+                       ["Visa" "Amex" "Master"]
+                       ["Amex" "Master" "Visa"]
+                       ["Amex" "Visa" "Master"]
+                       ["Master" "Visa" "Amex"]
+                       ["Master" "Amex" "Visa"]} (getem3 :card :card :card)))
+
+              (is (= #{["Visa" "Master"] 
+                       ["Visa" "Amex"]
+                       ["Amex" "Master"]
+                       ["Amex" "Visa"]
+                       ["Master" "Visa"]
+                       ["Master" "Amex"]} (getem2 :card :card)))
+
+              ))
         )
       )
 
@@ -170,6 +195,7 @@
                   (is (= 22 (:counter @(cs/get-component-for-entity cstore 'e1 :cat))))
                   (is (= 16 (:counter @(cs/get-component-for-entity cstore 'e2 :cat))))
                   ))
+
               ) ; update-compoents       
             ) ; let
 

@@ -39,7 +39,7 @@
   (comp first get-components-for-entity))
 
 (defn get-components
-  "Get all components of component type, independent of entity"
+  "Return a seq of components of the given type, independent of entity."
   [cstore component-type]
   (apply concat (vals (get @cstore component-type))))
 
@@ -54,14 +54,18 @@
   ; Two components
   ([cstore f ctype1 ctype2]
    (for [c1 (get-components cstore ctype1)
-         c2 (get-components-for-entity cstore (:eid @c1) ctype2)]
+         c2 (get-components-for-entity cstore (:eid @c1) ctype2)
+         :when
+         (not= c1 c2)]
         (f c1 c2)))
 
   ; Three components
   ([cstore f ctype1 ctype2 ctype3]
    (for [c1 (get-components cstore ctype1)
          c2 (get-components-for-entity cstore (:eid @c1) ctype2)
-         c3 (get-components-for-entity cstore (:eid @c1) ctype3)]
+         c3 (get-components-for-entity cstore (:eid @c1) ctype3)
+         :when 
+         (and (not= c1 c2) (not= c1 c3) (not= c2 c3))]
      (f c1 c2 c3)))
     )
 
