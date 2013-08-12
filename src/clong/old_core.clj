@@ -1,8 +1,10 @@
 (ns clong.core
   (:gen-class)
   (:require 
+     [clong.ecs.entity-manager   :as em]
+     [clong.ecs.components.mover :as m]
      [clong.utils :refer :all]
-     [clong.box :as box]
+     [clong.box :as b]
      [clong.gdx-helpers :as gh]
      [clong.input :as in]
       )
@@ -15,6 +17,19 @@
      ))
 
 
+(declare modes)
+
+(defn get-mode [manager] (:mode (deref (:meta manager))))
+(defn set-mode [manager mode] (alter (:meta manager) assoc :mode mode))
+(defn change-to-mode [manager new-mode-id]
+  (let [old-mode-id (get-mode manager)
+        old-mode    (old-mode-id modes)
+        out-fn      (:out old-mode)
+        new-mode    (new-mode-id modes)
+        in-fn       (:in new-mode)]
+    (dosync
+      (set-mode (in-fn (out-fn manager)) new-mode-id))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; INITIALIZE
@@ -22,240 +37,201 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 (def red-laser-color [1 0.7 0.7 0.5])
 (def green-laser-color [0.7 1 0.7 0.5])
+(def red [1 0 0 1])
+(def green [0 1 0 1])
 (def white [1 1 1 1])
 
-(defn new-ball [] {:id :ball, :position [220 120], :size [10 10], :color white :velocity [60 30]})
-(defn new-red-paddle [] {:id :red-paddle, :position [20 90], :size [12 48], :color [1 0 0 1]})
-(defn new-green-paddle []  {:id :green-paddle, :position [440 90], :size [12 48], :color [0 1 0 1]})
 
-(defn new-explosion [opts]
-  (let [position (or (:position opts) [0 0])
-        color    (or (:color opts) [1 1 1 1])
-        base {:position position :size [10 10] :size-change [-8 -8] :color color :velocity [-100 200] :accel [0 -600]}
-        opts (merge {:ttl 0.8 
-                     ;:position position
-                     :particles [(assoc base :velocity [100 200])
-                                 (assoc base :velocity [-100 200])
-                                 (assoc base :velocity [20 0])
-                                 (assoc base :velocity [-50 300])]
-                     } opts)]
-    opts))
+(defn reset-ball [box] (assoc box :position [220 120] :velocity [30 60]))
+
+(defn ball-entity [manager] 
+  (em/add-entity manager 
+             :ball []
+             :box  (reset-ball {:size [10 10] :color white})))
+
+(defn field-entity [manager]
+  (em/add-entity manager
+             :field []
+             :box {:position [0 0] :size [480 320]}))
+              
+(defn red-goal-entity [manager]
+  (em/add-entity manager
+             :goal []
+             :score-goes-to :green-paddle
+             :box {:position [-20 0] :size [20 320]}))
+
+(defn green-goal-entity [manager]
+  (em/add-entity manager
+             :goal []
+             :score-goes-to :red-paddle
+             :box {:position [480 0] :size [20 320]}))
+
+(defn goal-scored-entity [manager paddle-id]
+  (em/add-entity manager
+             :goal-scored paddle-id))
+              
+(defn red-paddle-entity [manager] 
+  (em/add-entity manager 
+             :paddle   []
+             :id       :red-paddle
+             :score    0
+             :box      {:position [20 90] :size [12 48] :velocity [0 0] :color red}
+             :controls {:up false :down false :shoot false}
+             :controller-mapping {:up    [:held Input$Keys/W]
+                                  :down  [:held Input$Keys/S]
+                                  :shoot [:pressed Input$Keys/E]}))
+
+(defn green-paddle-entity [manager] 
+  (em/add-entity manager 
+             :paddle   []
+             :id       :green-paddle
+             :score    0
+             :box      {:position [440 60] :size [12 48] :velocity [0 0] :color green}
+             :controls {:up false :down false :shoot false}
+             :controller-mapping {:up    [:held Input$Keys/UP]
+                                  :down  [:held Input$Keys/DOWN]
+                                  :shoot [:pressed Input$Keys/PERIOD]}))
+
+(defn game-control-entity [manager]
+  (em/add-entity manager
+             :game-control []
+             :id :game-control
+             :controls {:start false}
+             :controller-mapping {:start [:pressed Input$Keys/ENTER]
+                                  :pause [:pressed Input$Keys/SPACE]}))
+            
+
+(defn scored-entity [manager ttl]
+  (em/add-entity manager
+             :id :scored-timer
+             :timer { :ttl ttl }))
+          
+(defn laser-entity [manager {position :position, speed :speed, color :color, owner :owner}]
+  (em/add-entity manager
+             :laser []
+             :owner owner
+             :box {:position position
+                   :size     [36 6] 
+                   :velocity [speed 0] 
+                   :color    color}
+             :timer {:ttl 1.5}))
+
+(defn explosion-entity [manager {:keys [position color] :or {color [1 1 1 1]} :as laser}]
+  (let [particle {:position position :size [10 10] :size-change [-8 -8] :color color :velocity [-100 200] :accel [0 -600]}]
+    (em/add-entity manager
+               :explosion []
+               :timer {:ttl 0.8}
+               :particles [(assoc particle :velocity [100 200])
+                           (assoc particle :velocity [-100 200])
+                           (assoc particle :velocity [20 0])
+                           (assoc particle :velocity [-50 300])]
+               )))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
-;; STATE
+;; SYSTEMS
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn box-mover-system [manager dt input]
+  (em/update-components manager :box m/update-mover dt))
 
-(def base-state 
-  {
-   :mode :ready
-   :bounds [320 0 0 480] ; t l b r
-   :goals [ { :id :red-goal, :scorer-for :green, :body { :position [-20 0] :size [20 320] } }
-            { :id :green-goal, :scorer-for :red, :body { :position [480 0] :size [20 320] } } ]
-   :score { :red 0 :green 0 }
+(defn ball-cieling-system [manager dt input]
+  (let [ball-eid (em/entity-id-with-component manager :ball)
+        box      (em/get-entity-component manager ball-eid :box)
+        bounds   (:box (em/entity-with-component manager :field))
+        {[x y] :position [w h] :size} box
+        {[left bottom] :position [bw bh] :size}  bounds]
+    (if (or (>= (+ y h) (+ bottom bh)) (<= y bottom) false)
+      ; If box has collided with top or bottom of field, negate vertical velocity:
+      (let [{[dx dy] :velocity} box
+            v1                [dx (* -1 dy)]]
+        ; update the box component for the ball entity:
+        (em/update-component manager ball-eid :box assoc :velocity v1))
+      ; else no change:
+      manager)))
 
-   :red-paddle   (new-red-paddle)
-   :green-paddle (new-green-paddle)
-   :ball (new-ball)
-   :lasers []
-   :explosions []
-   })
+    
+(defn ball-paddle-system [manager dt input]
+  (let [ball-eid (em/entity-id-with-component manager :ball)
+        ball-box (em/get-entity-component manager ball-eid :box)
+        ball-b-box (b/to-box ball-box)
+        paddle-boxes (map (fn [p] (b/to-box (:box p))) (em/entities-with-component manager :paddle))]
+    (if (some #(b/box-piercing-box? ball-b-box %1) paddle-boxes)
+      ; ball has struck a paddle
+      (let [{[dx dy] :velocity} ball-box
+            v1 [(* -1 dx) dy]]
+        ; negate the horiz velocity:
+        (em/update-component manager ball-eid :box assoc :velocity v1))
+      ; else no change:
+      manager)))
 
-
-; Ball:   id size color velocity position 
-; Paddle: id position size color 
-; Laser:  id position size color velocity ttl owner
-; Explosion: particles ttl
-; Particle: position size color velocity accel size-change
-
-; Component
-;   type 
-;   id  ?
-;   eid ?
-
-; 
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; CONTROLS
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(def controller-mapping
-  {:red-paddle   {:up   [:held Input$Keys/W]
-                  :down [:held Input$Keys/S]
-                  :shoot [:pressed Input$Keys/E]}
-   :green-paddle {:up   [:held Input$Keys/UP]
-                  :down [:held Input$Keys/DOWN]
-                  :shoot [:pressed Input$Keys/PERIOD]}
-   :master       {:start [:pressed Input$Keys/ENTER]
-                  :pause [:pressed Input$Keys/SPACE]
-                  :test  [:pressed Input$Keys/T]
-                  }
-   })
-
-(def held-key-watch-list (map #(get %1 1) (mapcat vals (vals controller-mapping))))
-
-(defn resolve-control [input [action key-code]]
-  (contains? (action input) key-code))
 
 (defn resolve-controls [input ctrl-defs]
-  (vmap (fn [k v] (resolve-control input v)) ctrl-defs))
+  (vmap (fn [k [action key-code]] 
+          (contains? (action input) key-code)) ctrl-defs))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;
-;; UPDATE
-;;
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn controller-system [manager dt input]
+  (em/update-components2 manager [:controls :controller-mapping]
+                         (fn [controls controller-mapping]
+                           (resolve-controls input controller-mapping))))
 
-(defn update-paddle-velocity [paddle controls]
-    (let [speed (if (:slow-effect paddle) 3 10)
+(defn calc-paddle-velocity [controls]
+    (let [speed 300
           y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
       [0 y]))
 
-(defn fire-paddle-laser [paddle controls]
-  (if (:shoot controls)
-    (let [{[paddle-x paddle-y] :position paddle-id :id} paddle
+(defn paddle-movement-system [manager dt input]
+  (em/update-components2 manager [:box :controls :paddle]
+                         (fn [box controls paddle]
+                           (assoc box :velocity (calc-paddle-velocity controls))))) 
+    
+
+(defn- update-slow-effect-components [manager dt]
+  (em/update-components manager :slow-effect
+                        (fn [{ttl :ttl :as slow-effect}]
+                          (let [ttl1 (- ttl dt)]
+                            (if (<= ttl1 0)
+                              nil
+                              (assoc slow-effect :ttl ttl1))))))
+
+(defn slow-effect-system [manager dt input]
+  (let [manager1 (update-slow-effect-components manager dt)]
+    (em/update-components2 manager1 [:box :slow-effect]
+                           (fn [{[dx dy] :velocity :as box} {speed :speed}]
+                             (assoc box :velocity [(* dx speed) (* dy speed)])))))
+
+(defn fire-laser [manager paddle-id box]
+    (let [{[paddle-x paddle-y] :position} box
           x         (paddle-id {:red-paddle (+ paddle-x 12) :green-paddle (- paddle-x 36)})
-          y         (+ paddle-y 48)
-          paddle-id (:id paddle)
-          speed     (if (= :red-paddle paddle-id) 20 -20)
-          color     (if (= :red-paddle paddle-id) red-laser-color green-laser-color)
-          laser-gesture {:speed speed :position [x y] :owner (:id paddle) :color color}]
-      (assoc paddle :fire-laser laser-gesture))
-    (dissoc paddle :fire-laser)))
+          y         (+ paddle-y 24)
+          speed     (if (= :red-paddle paddle-id) 400 -400)
+          color     (if (= :red-paddle paddle-id) red-laser-color green-laser-color)]
+      (laser-entity manager 
+          {:speed speed :position [x y] :owner paddle-id :color color})))
 
-(defn still-ttl? [x] (> (:ttl x) 0))
+(defn add-lasers [manager]
+  (reduce 
+    (fn [mgr [eid controls box paddle paddle-id]] 
+      (if (:shoot controls)
+        (fire-laser mgr paddle-id box)
+        mgr))
+    manager
+    (em/search-components manager [:controls :box :paddle :id])))
 
-(defn gesture-to-laser [laser-gesture]
-  (let [base (select-keys laser-gesture [:position :owner :color])
-        {speed :speed} laser-gesture]
-    (assoc base
-           :velocity [speed 0]
-           :size [36 6]
-           :ttl 1.5)))
+; TODO: timer system?
+(defn remove-timed-out-entities [manager component-type]
+  (let [expired-results (filter (fn [[eid timer component]] (<= (:ttl timer) 0)) 
+                         (em/search-components manager [:timer component-type]))]
+    (em/remove-entities manager (map first expired-results))))
 
-(defn add-new-lasers [paddles lasers]
-  (let [gestures (reject-nils (map :fire-laser paddles))]
-    (concat lasers 
-            (map gesture-to-laser gestures))))
+(defn expire-lasers [manager] 
+  (remove-timed-out-entities manager :laser))
 
-(defn update-laser [dt laser]
-  (let [{[x y] :position [w h] :size [dx dy] :velocity ttl :ttl} laser
-        uposition [(+ x dx)  (+ y dy)]
-        uttl      (- ttl dt)
-        ]
-    (assoc laser 
-           :position uposition 
-           :ttl uttl)))
-
-(defn update-paddle-slow-effect [paddle dt]
-  (if-let [effect (:slow-effect paddle)]
-    (if (< (:ttl effect) 0)
-      (dissoc paddle :slow-effect)
-      (update-in paddle [:slow-effect :ttl] #(- %1 dt)))
-    paddle))
-
-(defn update-paddle [paddle input ctrl-map dt]
-  (let [{[x y] :position} paddle
-        controls  (resolve-controls input (get ctrl-map (:id paddle)))
-        pad0 (update-paddle-slow-effect paddle dt)
-        [dx dy] (update-paddle-velocity pad0 controls)
-        new-y (clamp 0 270 (+ y dy))
-        pad1 (assoc pad0 :position [x new-y])
-
-        pad2 (fire-paddle-laser pad1 controls)
-        ]
-    pad2))
-
-
-
-(defn ball-collide-paddle? [ball paddle]
-  (let [box (box/to-box paddle)
-        pts (box/to-pts (box/to-box ball))]
-    (some #(box/contains-pt? box %1) pts)))
-
-  
-(defn handle-ball-paddle-collision [ball]
-  (let [{vel :velocity} ball
-        vel1 [(* -1 (vel 0)) (vel 1)]]
-    (assoc ball :velocity vel1)))
-
-(defn handle-ball-top-bottom-collision [ball]
-  (let [{vel :velocity} ball
-        vel1 [(vel 0) (* -1 (vel 1))]
-        ]
-    (assoc ball :velocity vel1)))
-
-
-(defn update-velocity [dt {[dx dy] :velocity [ax ay] :accel :as mover}]
-  (assoc mover :velocity [(+ dx (* dt ax)) 
-                          (+ dy (* dt ay))]))
-
-;(defn update-position [dt mover]
-;  (let [{[x y] :position [dx dy] :velocity} mover
-;        dest [(+ (* dt dx) x) (+ (* dt dy) y)]]
-;    (assoc mover :position dest)))
-(defn update-position [dt {[x y] :position [dx dy] :velocity :as mover}]
-  (assoc mover :position [(+ x (* dt dx))
-                          (+ y (* dt dy))]))
-
-(defn update-size [dt {[w h] :size [dw dh] :size-change :as box}]
-  (assoc box :size [(+ w (* dt dw)) 
-                    (+ h (* dt dh))]))
-
-(defn collide-ball-paddles [paddles ball]
-  (if (some #(ball-collide-paddle? ball %1) paddles)
-    (handle-ball-paddle-collision ball)
-    ball))
-
-(defn collide-ball-top-bottom [screen-bounds ball]
-  (let [{[x y] :position [w h] :size}   ball
-        [s-top s-left s-bottom s-right] screen-bounds]
-    (if (or (>= (+ y h) s-top) (<= y s-bottom) false)
-      (handle-ball-top-bottom-collision ball)
-      ball)))
-
-(defn first-overlapping-goal [goals ball]
-  (first (drop-while (fn [goal] (not (box/box-piercing-box? (box/to-box ball) (box/to-box (:body goal))))) goals)))
-
-
-(defn detect-goal [goals ball]
-  (if-let [goal (first-overlapping-goal goals ball)]
-    (assoc ball :goal-scored-by (:scorer-for goal))
-    ball))
-
-(defn update-ball [ball dt paddles goals screen-bounds] 
-  (detect-goal goals 
-             (collide-ball-top-bottom screen-bounds 
-                                      (collide-ball-paddles paddles
-                                                            (update-position dt ball)))))
-(defn score-hit [ball score]
-  (if-let [player (:goal-scored-by ball)]
-    (assoc score player (+ 1 (get score player)))
-    score))
-
-
-(defn update-mode [state input ctrl-map]
-    (let [controls (resolve-controls input (:master ctrl-map))
-          {mode :mode} state
-          ]
-      (if (:pause controls)
-        (case mode
-          :paused :playing 
-          :playing :paused
-          mode)
-        (if (:start controls)
-          (case mode
-            :ready :playing
-            :scored :ready
-            mode)
-          mode))))
-
+(defn clear-lasers [manager]
+  (em/remove-entities manager (em/entity-ids-with-component manager :laser)))
 
 (defn laser-strikes-paddle? [laser paddle]
-  (box/box-piercing-box? (box/to-box laser) (box/to-box paddle)))
+  (b/box-piercing-box? (b/to-box (:box laser)) (b/to-box (:box paddle))))
 
 (defn laser-paddle-hits [lasers paddles]
   (for [laser lasers, paddle paddles
@@ -263,162 +239,169 @@
                    (not (= (:owner laser) (:id paddle))))]
     [laser paddle]))
 
-(defn laser-strikes-ball? [laser ball]
-  (let [l-box (box/to-box laser)
-        b-box (box/to-box ball)]
-    (or (box/box-piercing-box? l-box b-box)
-        (box/box-piercing-box? b-box l-box))))
-
-(defn laser-ball-hits [lasers ball]
-  (for [laser lasers :when (laser-strikes-ball? laser ball)] 
-    [laser ball]))
 
 
-(defn apply-slow-effect-to-paddle [paddle]
-  (assoc paddle :slow-effect {:ttl 1.0}))
+(defn add-explosions [manager lasers]
+  (reduce explosion-entity 
+          manager 
+          (map :box lasers)))
 
-(defn apply-slow-effect-to-paddles [hit-paddles red green]
-  (let [updated (map apply-slow-effect-to-paddle hit-paddles)
-        ;_ (if (not (empty? updated)) (println "slowed paddles:" updated))
-        ured (or (find-by updated :id :red-paddle) red)
-        ugreen (or (find-by updated :id :green-paddle) green)]
-    [ured ugreen]))
-
-(defn create-explosions [controls]
-  (if (:test controls)
-    [(new-explosion {:position [320 120]})]
-    []))
-
-(defn update-explosion-particle [dt particle]
-  (let [
-        particle1 (update-position dt (update-velocity dt (update-size dt particle)))]
-    particle1))
-
-(defn update-explosion [{ttl :ttl, particles :particles :as explosion} dt]
-  (let []
-    (assoc explosion 
-           :particles (map (partial update-explosion-particle dt) particles)
-           :ttl (- ttl dt))))
+(defn add-slow-effect [manager ents slow-effect]
+  (reduce (fn [mgr eid] 
+            (em/set-component mgr eid :slow-effect slow-effect))
+          manager
+          (map :eid ents)))
 
 
-(defn update-explosions [explosions dt]
-  (filter still-ttl? 
-          (reject-nils 
-            (map #(update-explosion %1 dt) 
-                 explosions))))
+(defn collide-lasers-paddles [manager]
+  (let [lasers (em/entities-with-component manager :laser)
+        paddles (em/entities-with-component manager :paddle)
+        hits (laser-paddle-hits lasers paddles)
+        hit-lasers (map first hits)
+        hit-paddles (map second hits)
+        done-laser-eids (map :eid hit-lasers)
+        ]
+    (-> manager
+      (add-explosions hit-lasers)
+      (add-slow-effect hit-paddles {:speed 0.2 :ttl 2})
+      (em/remove-entities done-laser-eids)
+    )))
+
+(defn paddle-weapon-system [manager dt input]
+  (-> manager 
+    add-lasers 
+    collide-lasers-paddles 
+    expire-lasers ))
+
+
+
+(defn paddle-bounds-system [manager dt input]
+  (em/update-components2 manager [:box :paddle]
+                      (fn [{[x y] :position :as box} paddle] 
+                        (assoc box :position [x (clamp 0 270 y)]))))
+
+(defn first-overlapping-goal [goals ball]
+  (first (drop-while (fn [goal] (not (b/box-piercing-box? (b/to-box (:box ball)) (b/to-box (:box goal))))) goals)))
+
+(defn goal-system [manager dt input]
+  (let [goals (em/entities-with-component manager :goal)
+        ball  (em/entity-with-component manager :ball)]
+    (if-let [{scorer :score-goes-to} (first-overlapping-goal goals ball)]
+      (if-let [{eid :eid} (em/search-entity manager :id scorer)]
+        (-> manager 
+          (em/update-component eid :score inc)
+          (change-to-mode :scored)
+          )
+        manager)
+      manager)))
+
+(defn game-control-system [manager dt input]
+  (let [mode (get-mode manager)
+        [[_ controls] & _] (em/search-components manager [:controls :game-control])]
+    (case mode
+      :ready (if (:start controls) (change-to-mode manager :playing) manager)
+      :playing (if (:pause controls) (change-to-mode manager :paused) manager)
+      :paused (if (:pause controls) (change-to-mode manager :playing) manager)
+      :scored (if (or (:start controls) (:pause controls)) (change-to-mode manager :ready) manager)
+      manager)))
+
+(defn timer-system [manager dt input]
+  (em/update-components manager :timer (fn [{ttl :ttl :as timer}] 
+                                         (assoc timer :ttl (- ttl dt)))))
+
+(defn scored-system [manager dt input]
+  (let [timer (:timer (em/search-entity manager :id :scored-timer))]
+    (if (<= (:ttl timer) 0)
+      (change-to-mode manager :ready)
+      manager)))
+
+
+(defn expire-explosions [manager]
+  (remove-timed-out-entities manager :explosion))
+
+(defn update-explosions [manager dt]
+  (em/update-components manager :particles
+                        (fn [particles] (map #(m/update-mover %1 dt) particles))))
+
+(defn explosion-system [manager dt input]
+  (-> manager 
+    (expire-explosions)
+    (update-explosions dt)
+    ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
-;; MODES
+;; UPDATE MODES
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn system-chain [& systems]
+  (fn [manager dt input]
+    (reduce (fn [mgr sys] (sys mgr dt input)) manager systems)))
 
-(defn default-transition [old-state state] state)
+(def default-transition identity)
 
-(defn default-update [state dt input] 
-  (let [umode (update-mode state input controller-mapping)]
-    (assoc state :mode (update-mode state input controller-mapping))))
+(defn default-update [manager dt input] manager)
 
-(def base-mode
+(def default-mode
   {:in     default-transition
    :update default-update
    :out    default-transition})
 
-(def ready-mode
-  (assoc base-mode
-         :in 
-         (fn [old-state state]
-           (assoc state 
-                  :ball (new-ball)
-                  :red-paddle (new-red-paddle)
-                  :green-paddle (new-green-paddle)
-                  :lasers []
-                  :explosions []))))
+(def froze-mode
+  (assoc default-mode :update (system-chain 
+                             controller-system
+                             game-control-system
+                             )))
+
+(def ready-mode 
+  (assoc froze-mode
+         :in (fn [manager] 
+               (-> manager
+                 (em/update-components2 [:box :ball]
+                                        (fn [box _] (reset-ball box)))
+                 (em/update-components2 [:box :paddle]
+                                        (fn [{[x y] :position :as box} _] 
+                                          (assoc box :position [x 120])))
+                 (clear-lasers)
+               ))))
 
 (def playing-mode
-  (assoc base-mode
-         :update 
-         (fn [state dt input]
-           (let [{red :red-paddle 
-                  green :green-paddle 
-                  ball :ball 
-                  goals :goals 
-                  bounds :bounds 
-                  score :score 
-                  lasers :lasers 
-                  explosions :explosions}  state
-                 ball1 (update-ball ball dt [red green] goals bounds)
-                 score-event (:goal-scored-by ball1)
-                 uscore (if score-event (score-hit ball1 score) score)
-                 umode (if score-event :scored (update-mode state input controller-mapping))
-                 ured (update-paddle red input controller-mapping dt)
-                 ugreen (update-paddle green input controller-mapping dt)
+  (assoc default-mode :update (system-chain 
+                                controller-system
+                                paddle-movement-system
+                                slow-effect-system
+                                paddle-weapon-system
+                                box-mover-system
+                                explosion-system
+                                paddle-bounds-system
+                                ball-cieling-system
+                                ball-paddle-system
+                                goal-system
+                                game-control-system
+                                timer-system
+                             )))
 
-                 ;ulasers (filter still-ttl? (map #(update-laser dt %1) lasers)) ; TODO change 'filter still-ttl' to 'remove #(< (:ttl %1) 0)' or 'remove no-ttl'
-                 ;ulasers1 (add-new-lasers [ured ugreen] ulasers)
+(def paused-mode froze-mode)
 
-                 ;; laser-paddle collision detection
-                 ;l-p-hits (laser-paddle-hits ulasers1 [ured ugreen])
-                 ; drop impacting lasers:
-                 ;ulasers2 (let [done-lasers (map first l-p-hits)]
-                 ;           (remove (fn [l] (some #{l} done-lasers)) ulasers1))
+(def scored-mode 
+  (assoc default-mode 
+         :in (fn [manager]
+               (scored-entity manager 2.0))
+         :update (system-chain 
+                   timer-system
+                   scored-system)
+         :out (fn [manager]
+                (let [st (em/search-entity manager :id :scored-timer)]
+                  (em/remove-entity manager (:eid st))))))
 
-                 ; slow the hit paddles:
-                 ;[ured1 ugreen1] (apply-slow-effect-to-paddles (map second l-p-hits) ured ugreen)
-
-                 ;l-p-explosions (map (fn [{owner :owner :as laser}] 
-                 ;                      (let [color (if (= :red-paddle owner) red-laser-color green-laser-color)]
-                 ;                        (new-explosion (assoc (select-keys laser [:position]) :color color)))) 
-                 ;                    (map first l-p-hits))
-
-                 ;l-b-hits (laser-ball-hits ulasers1 ball1)
-                 ;ball2 (if (empty? l-b-hits) ball1 (new-ball))
-                 ;l-b-explosions (map (fn [{owner :owner :as laser}] 
-                 ;                      (new-explosion (assoc (select-keys laser [:position]) :color white)))
-                 ;                    (map first l-b-hits))
-
-                 ;explosions1 (concat explosions l-p-explosions l-b-explosions)
-                 ;explosions2 (update-explosions explosions1 dt)
-
-
-                 ]
-             state
-             ;(assoc state 
-             ;       :red-paddle ured1
-             ;       :green-paddle ugreen1
-             ;       :ball ball2
-             ;       :score uscore
-             ;       :mode umode
-             ;       :lasers ulasers2
-             ;       :explosions explosions2
-             ;       )
-             ))))
 
 (def modes {:ready   ready-mode
             :playing playing-mode
-            :paused  base-mode
-            :scored  base-mode})
+            :paused  paused-mode
+            :scored  scored-mode
+            })
 
-(defn update-state 
-  "Transform current game state into next game state
-  based on time delta (dt) and user input.
-  
-  The update function is pulled from the current mode's :update
-  which is drawn from the 'modes' map based on the :mode
-  in state.  If the :mode changes due to update, the
-  transition-in function for the subsequent mode will be invoked."
-  [state dt input] 
-  (let [current-mode (get modes (:mode state))
-        update-fn    (get current-mode :update)
-        next-state   (if update-fn 
-                       (update-fn state dt input)
-                       state)]
-    (if (= (:mode state) (:mode next-state))
-      next-state
-      (let [next-mode        (get modes (:mode next-state))
-            transition-in-fn (get next-mode :in)]
-        (transition-in-fn state next-state)))))
-
+    
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -426,8 +409,8 @@
 ;; DRAWING
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn draw-block [srend {[x y] :position [w h] :size [r g b a] :color}]
-  (doto srend
+(defn draw-block [shape-renderer {[x y] :position [w h] :size [r g b a] :color}]
+  (doto shape-renderer
     (.begin ShapeRenderer$ShapeType/Filled)
     (.setColor r g b a)
     (.rect x y w h)
@@ -435,83 +418,113 @@
 
 (def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
 
-(defn draw-hud [shape-renderer camera font sprite-batch state]
-  (let [{red-score :red green-score :green} (:score state)
-        {game-mode :mode} state
-        ]
+(defn hud-rendering-system [manager dt input fw-objs]
+  (let [{camera       :camera
+         font         :font
+         sprite-batch :sprite-batch} fw-objs
+        red-score     (:score (em/search-entity manager :id :red-paddle))
+        green-score     (:score (em/search-entity manager :id :green-paddle))
+        game-mode-string (get game-mode-strings (get-mode manager))]
     (.setProjectionMatrix sprite-batch (.combined camera))
     (.begin sprite-batch)
 
     (.draw font sprite-batch (str "Red: " red-score) 20 20)
     (.draw font sprite-batch (str "Green: " green-score) 400 20)
-    (.draw font sprite-batch ((:mode state) game-mode-strings) 220 20)
+    (.draw font sprite-batch game-mode-string 220 20)
 
     (.end sprite-batch)
     ))
 
 
-(defn draw-level [shape-renderer camera font sprite-batch state]
+(defn box-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
+  (doseq [{box :box} (filter #(contains? (:box %1) :color) (map (partial em/get-entity-components manager) 
+                                                                (em/entity-ids-with-component manager :box)))]
+      (draw-block shape-renderer box)))
 
-  ;; Draw block shapes:
-  (let [things (map (partial get state) [:red-paddle :green-paddle :ball])
-        projectiles (get state :lasers)
-        explosions (mapcat :particles (get state :explosions))
-        blocks (concat things projectiles explosions)]
-    (doall
-      (map (partial draw-block shape-renderer) blocks)))
+(defn box-particle-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
+  (let [particles (mapcat :particles (em/entities-with-component manager :particles))]
+    (doseq [box particles]
+      (draw-block shape-renderer box))))
 
-  ;; Scores etc
-  (draw-hud shape-renderer camera font sprite-batch state)
-  )
 
+(def side-effector-systems 
+  [box-rendering-system
+   box-particle-rendering-system
+   hud-rendering-system])
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
 ;; SETUP
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(defn held-keys [controller-mapping]
+  (map (comp second second) (filter (fn [[ctrl [act keycode]]] (= :held act)) controller-mapping)))
+
+(defn held-key-watch-list [manager]
+  (let [cmaps (map :controller-mapping (em/entities-with-component manager :controller-mapping))]
+    (mapcat held-keys cmaps)))
 
 
-(defn pong-screen [state stuff]
-  (let [shape-renderer (ref nil)
-        camera (ref nil)
-        font (ref nil)
-        sprite-batch (ref nil)
+(defn pong-screen [entity-manager snapshot]
+  (let [fw-objs (ref {})
         input-events (ref in/key-input-events)
         input-processor (in/input-processor input-events)
-        next-input (fn [ie] (assoc ie :held (in/read-held-keys held-key-watch-list)))
+        watch-list (held-key-watch-list @entity-manager)
+        next-input (fn [ie] (assoc ie :held (in/read-held-keys watch-list)))
         ]
     (gh/ez-screen 
       {:show (fn [] 
-               (let [_shape-renderer (ShapeRenderer.)
-                     _camera         (gh/ortho-camera 480 320)
-                     _font           (BitmapFont.)
-                     _sprite-batch   (SpriteBatch.)
-                     ]
-                 (.setInputProcessor Gdx/input input-processor)
-                 (dosync
-                   (ref-set shape-renderer _shape-renderer)
-                   (ref-set camera _camera)
-                   (ref-set font _font)
-                   (ref-set sprite-batch _sprite-batch)
-                   )))
+               (.setInputProcessor Gdx/input input-processor)
+               (dosync
+                 ;; Build "framework objects", things that are needed to tie into GDX, 
+                 ;; which cannot be built until we're in a running app, on the app thread.
+                 (ref-set fw-objs {:shape-renderer (ShapeRenderer.)
+                                   :camera         (gh/ortho-camera 480 320)
+                                   :font           (BitmapFont.)
+                                   :sprite-batch   (SpriteBatch.)})))
 
        :render (fn [dt]
                  (dosync 
-                    (let [input1 (next-input @input-events)            ;; Collect input
-                          state1 (alter state update-state dt input1)] ;; Update game state
-                      ;; Clear input:
-                      (ref-set input-events in/key-input-events)  
+                   (let [input1 (next-input @input-events)            ;; Collect input
+                         mode-fns  (get modes (get-mode @entity-manager))
+                         update-fn (get mode-fns :update)
+                         
+                         entity-manager1 (alter entity-manager update-fn dt input1)] ;; Update game state
 
-                      ;; Update snapshot:
-                      (alter stuff assoc 
-                             :input input1
-                             :state state1)
-                      ))
-                 ;; Draw screen:
-                 (draw-level @shape-renderer @camera @font @sprite-batch @state))
+                     ;; Clear input:
+                     (ref-set input-events in/key-input-events)  
+
+                     ;; Update snapshot:
+                     (ref-set snapshot {:input input1
+                                        :entity-manager entity-manager1})
+                     ))
+
+                 ;; exec all side-effector systems:
+                 (let [em @entity-manager] 
+                   (doseq [sys side-effector-systems] (sys em dt (get snapshot :input) @fw-objs))))
        }
       )))
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; STATE
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+(def base-entity-manager (-> (em/manager)
+                           (assoc :meta (ref {:mode :ready}))
+
+                           (ball-entity)
+                           (field-entity)
+                           (red-goal-entity)
+                           (green-goal-entity)
+                           (red-paddle-entity)
+                           (green-paddle-entity)
+
+                           (game-control-entity)
+
+                           (change-to-mode :ready)
+                           ))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -520,33 +533,43 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defonce game (ref nil))
-(defonce app (ref nil))
+(defonce game (gh/ez-game))
+(defonce app (LwjglApplication. game "Clong!" 480 320 false))
 
-(defonce state (ref base-state))
-(defonce stuff (ref {}))
-(defn new-state [] (dosync (ref-set state base-state)))
-(defn bb [] (dosync (alter state assoc :ball (new-ball))))
+(defn set-screen! [s] (.postRunnable app (fn [] (.setScreen game s))))
 
-    
-(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.core :reload))
+(defonce entity-manager (ref base-entity-manager))
+(defn reset-entity-manager! [] (dosync (ref-set entity-manager base-entity-manager)))
+(defonce snapshot (ref {:input nil :entity-manager nil}))
 
-(defn set-screen [s] (.postRunnable @app (fn [] (.setScreen @game s))))
+(defn reset-screen! [] 
+  (set-screen! (pong-screen entity-manager snapshot)))
 
-(defn sb [] (set-screen (pong-screen state stuff)))
+(defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover :reload)(use 'clong.core :reload))
+(defn rr [] (rl)(reset-screen!))
+(defn rs [] (rr)(reset-entity-manager!))
 
-(defn rr [] (rl)(sb))
-(defn rs [] (rr)(new-state))
-
-(defn start []
-  (let [g (gh/ez-game)
-        a (LwjglApplication. g "My Application" 480 320 false)]
-    (dosync (ref-set game g)
-             (ref-set app a))
-    (sb)
-    true))
-
+(reset-screen!)
 
 
 (defn -main [& args]
   )
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;
+;; Scratch:
+;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+(def counters [(ref 0) (ref 0) (ref 0) (ref 0)])
+(defn update-counters [counters] 
+  (dosync
+    (doseq [ctr-ref counters]
+      (Thread/sleep 1000)
+      (alter ctr-ref inc)
+      (println "Updated counter to" @ctr-ref)
+      )))
+
+(defn bgth [f] (.start (Thread. (fn [] (f)))))
+(defn bg-update [] (bgth #(update-counters counters)))
