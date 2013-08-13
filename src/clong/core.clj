@@ -53,8 +53,8 @@
 ;              :ball []
 ;              :box  (reset-ball {:size [10 10] :color white})))
 (defn yellow-ball-entity [cstore eid]
-  (cs/component (next-eid) :ball {})
-  (cs/component (next-eid) :box {:size [10 10] :color yellow :position [10 100] :velocity [30 0]}))
+  (cs/add-component cstore (cs/component (next-eid) :ball {}))
+  (cs/add-component cstore (cs/component (next-eid) :box {:size [10 10] :color yellow :position [10 100] :velocity [30 0]})))
 
 ; (defn field-entity [manager]
 ;   (em/add-entity manager
@@ -144,7 +144,7 @@
 ;   (em/update-components manager :box m/update-mover dt))
 
 (defn box-mover-system [cstore dt input]
-  (doall (cs/map-components cstore (fn [box] (m/update-mover box dt)) :box)))
+  (doall (cs/map-components cstore #(alter %1 m/update-mover dt) :box)))
 ; 
 ; (defn ball-cieling-system [manager dt input]
 ;   (let [ball-eid (em/entity-id-with-component manager :ball)
@@ -457,7 +457,7 @@
 ; 
 (defn box-rendering-system [cstore dt input {shape-renderer :shape-renderer :as fw-objs}]
   (doall (cs/map-components cstore 
-                            #(draw-block shape-renderer %1) 
+                            #(draw-block shape-renderer @%1) 
                             :box)))
 
 ; (defn box-particle-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
@@ -550,9 +550,9 @@
 ;                            ))
 (defn base-component-store []
   (dosync 
-  (let [cstore (cs/component-store)]
-        (yellow-ball-entity cstore (next-eid))
-    cstore)))
+    (let [cstore (cs/component-store)]
+      (yellow-ball-entity cstore (next-eid))
+      cstore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;
@@ -571,7 +571,7 @@
 
 (defonce component-store-ref (ref (base-component-store)))
 (defn reset-component-store! [] (dosync (ref-set component-store-ref (ref (base-component-store)))))
-(reset-component-store!)
+;;(reset-component-store!)
 (defonce snapshot (ref {:input nil :component-store nil}))
 
 (defn reset-screen! [] 
