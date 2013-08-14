@@ -46,31 +46,29 @@
 
 (defn next-eid [] (gensym 'e))
 
+(defn add-components [cstore eid & pairs]
+  (doseq [[ctype data] (apply array-map pairs)]
+    (cs/add-component cstore (cs/component eid ctype data))))
 
 (defn yellow-ball-entity [cstore eid]
-  (cs/add-component cstore (cs/component eid :ball {}))
-  (cs/add-component cstore (cs/component eid :box {:size [10 10] :color yellow :position [10 100] :velocity [30 190]})))
+  (add-components cstore eid 
+                  :ball {}
+                  :box {:size [10 10] 
+                        :color yellow 
+                        :position [10 100] 
+                        :velocity [30 190]}))
 
-; (defn reset-ball [box] (assoc box :position [220 120] :velocity [30 60]))
-; 
-; (defn ball-entity [manager] 
-;   (em/add-entity manager 
-;              :ball []
-;              :box  (reset-ball {:size [10 10] :color white})))
 (defn game-ball [box] (assoc box :position [220 120] :velocity [30 60]))
 
 (defn ball-entity [cstore eid]
-  (cs/add-component cstore (cs/component eid :ball {}))
-  (cs/add-component cstore (cs/component eid :box (game-ball {:size [10 10] :color white}))))
-
-; (defn field-entity [manager]
-;   (em/add-entity manager
-;              :field []
-;              :box {:position [0 0] :size [480 320]}))
+  (add-components cstore eid
+                  :ball {}
+                  :box (game-ball {:size [10 10] :color white})))
 
 (defn field-entity [cstore eid]
-  (cs/add-component cstore (cs/component eid :field {}))
-  (cs/add-component cstore (cs/component eid :box {:position [0 0] :size [480 320]})))
+  (add-components cstore eid
+                  :field {}
+                  :box {:position [0 0] :size [480 320]}))
 
 ; (defn red-goal-entity [manager]
 ;   (em/add-entity manager
@@ -84,10 +82,6 @@
 ;              :score-goes-to :red-paddle
 ;              :box {:position [480 0] :size [20 320]}))
 ; 
-; (defn goal-scored-entity [manager paddle-id]
-;   (em/add-entity manager
-;              :goal-scored paddle-id))
-;               
 ; (defn red-paddle-entity [manager] 
 ;   (em/add-entity manager 
 ;              :paddle   []
@@ -98,6 +92,30 @@
 ;              :controller-mapping {:up    [:held Input$Keys/W]
 ;                                   :down  [:held Input$Keys/S]
 ;                                   :shoot [:pressed Input$Keys/E]}))
+;
+(defn red-paddle-entity [cstore eid] 
+  (add-components cstore eid
+                  :paddle {:id    :red-paddle
+                           :score 0}
+                  :box    {:color red
+                           :position [20 90] 
+                           :size     [12 48] 
+                           :velocity [0 0]}
+             :controls    {:up false :down false :shoot false}
+             :controller-mapping {:up    [:held Input$Keys/W]
+                                  :down  [:held Input$Keys/S]
+                                  :shoot [:pressed Input$Keys/E]}
+                           ))
+
+  ; (em/add-entity manager 
+  ;            :paddle   []
+  ;            :id       :red-paddle
+  ;            :score    0
+  ;            :box      {:position [20 90] :size [12 48] :velocity [0 0] :color red}
+  ;            :controls {:up false :down false :shoot false}
+  ;            :controller-mapping {:up    [:held Input$Keys/W]
+  ;                                 :down  [:held Input$Keys/S]
+  ;                                 :shoot [:pressed Input$Keys/E]}))
 ; 
 ; (defn green-paddle-entity [manager] 
 ;   (em/add-entity manager 
@@ -576,6 +594,8 @@
       (yellow-ball-entity cstore (next-eid))
       (ball-entity cstore (next-eid))
       (field-entity cstore (next-eid))
+      (red-paddle-entity cstore (next-eid))
+      ; (green-paddle-entity cstore (next-eid))
       cstore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
