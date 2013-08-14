@@ -101,32 +101,24 @@
                            :position [20 90] 
                            :size     [12 48] 
                            :velocity [0 0]}
-             :controls    {:up false :down false :shoot false}
-             :controller-mapping {:up    [:held Input$Keys/W]
-                                  :down  [:held Input$Keys/S]
-                                  :shoot [:pressed Input$Keys/E]}
-                           ))
+                  :controls    {:up false :down false :shoot false}
+                  :controller-mapping {:action-keys {:up    [:held Input$Keys/W]
+                                                    :down  [:held Input$Keys/S]
+                                                    :shoot [:pressed Input$Keys/E]}}
+                  ))
 
-  ; (em/add-entity manager 
-  ;            :paddle   []
-  ;            :id       :red-paddle
-  ;            :score    0
-  ;            :box      {:position [20 90] :size [12 48] :velocity [0 0] :color red}
-  ;            :controls {:up false :down false :shoot false}
-  ;            :controller-mapping {:up    [:held Input$Keys/W]
-  ;                                 :down  [:held Input$Keys/S]
-  ;                                 :shoot [:pressed Input$Keys/E]}))
-; 
-; (defn green-paddle-entity [manager] 
-;   (em/add-entity manager 
-;              :paddle   []
-;              :id       :green-paddle
-;              :score    0
-;              :box      {:position [440 60] :size [12 48] :velocity [0 0] :color green}
-;              :controls {:up false :down false :shoot false}
-;              :controller-mapping {:up    [:held Input$Keys/UP]
-;                                   :down  [:held Input$Keys/DOWN]
-;                                   :shoot [:pressed Input$Keys/PERIOD]}))
+(defn green-paddle-entity [cstore eid] 
+  (add-components cstore eid
+                  :paddle   {:id    :green-paddle
+                             :score 0}
+                  :box      {:color green
+                             :size [12 48] 
+                             :velocity [0 0] 
+                             :position [440 60]}
+                  :controls {:up false :down false :shoot false}
+                  :controller-mapping {:action-keys {:up    [:held Input$Keys/UP]
+                                                     :down  [:held Input$Keys/DOWN]
+                                                     :shoot [:pressed Input$Keys/PERIOD]}}))
 ; 
 ; (defn game-control-entity [manager]
 ;   (em/add-entity manager
@@ -169,26 +161,9 @@
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-; (defn box-mover-system [manager dt input]
-;   (em/update-components manager :box m/update-mover dt))
-
 (defn box-mover-system [cstore dt input]
   (doall (cs/map-components cstore #(alter %1 m/update-mover dt) :box)))
 
-; (defn ball-cieling-system [manager dt input]
-;   (let [ball-eid (em/entity-id-with-component manager :ball)
-;         box      (em/get-entity-component manager ball-eid :box)
-;         bounds   (:box (em/entity-with-component manager :field))
-;         {[x y] :position [w h] :size} box
-;         {[left bottom] :position [bw bh] :size}  bounds]
-;     (if (or (>= (+ y h) (+ bottom bh)) (<= y bottom) false)
-;       ; If box has collided with top or bottom of field, negate vertical velocity:
-;       (let [{[dx dy] :velocity} box
-;             v1                [dx (* -1 dy)]]
-;         ; update the box component for the ball entity:
-;         (em/update-component manager ball-eid :box assoc :velocity v1))
-;       ; else no change:
-;       manager)))
 (defn ball-cieling-system [cstore dt input]
   (doall (cs/map-components' cstore
                              (fn [[ball ball-box] [field field-box]]
@@ -196,9 +171,8 @@
                                    {[field-x field-y] :position, [field-w field-h] :size} @field-box]
                                (if (or (>= (+ ball-y ball-h) (+ field-y field-h)) (<= ball-y field-y) false)
                                  ; If box has collided with top or bottom of field, negate vertical velocity:
-                                   ; update the box component for the ball entity:
-                                   (alter ball-box assoc :velocity [dx (* -1 dy)]))
-                                 ))
+                                 (alter ball-box assoc :velocity [dx (* -1 dy)]))
+                               ))
                              [:ball :box] [:field :box])))
 
 ; (defn ball-paddle-system [manager dt input]
@@ -216,24 +190,29 @@
 ;       manager)))
 ; 
 ; 
-; (defn resolve-controls [input ctrl-defs]
-;   (vmap (fn [k [action key-code]] 
-;           (contains? (action input) key-code)) ctrl-defs))
-; 
-; (defn controller-system [manager dt input]
-;   (em/update-components2 manager [:controls :controller-mapping]
-;                          (fn [controls controller-mapping]
-;                            (resolve-controls input controller-mapping))))
-; 
-; (defn calc-paddle-velocity [controls]
-;     (let [speed 300
-;           y     (- (* speed (bool-to-int (:up controls))) (* speed (bool-to-int (:down controls))))]
-;       [0 y]))
-; 
-; (defn paddle-movement-system [manager dt input]
-;   (em/update-components2 manager [:box :controls :paddle]
-;                          (fn [box controls paddle]
-;                            (assoc box :velocity (calc-paddle-velocity controls))))) 
+(defn resolve-controls [input action-keys]
+  (vmap (fn [k [action key-code]] 
+          (contains? (action input) key-code)) action-keys))
+
+(defn controller-system [cstore dt input]
+  (doall (cs/map-components cstore 
+                     (fn [controls controller-mapping]
+                       ; (println @controls)
+                       (alter controls assoc :signals (resolve-controls input (:action-keys @controller-mapping)))
+                       ; (println @controls)
+                       )
+                     :controls :controller-mapping)))
+
+(defn calc-paddle-velocity [signals]
+    (let [speed 300
+          y     (- (* speed (bool-to-int (:up signals))) (* speed (bool-to-int (:down signals))))]
+      [0 y]))
+
+(defn paddle-movement-system [cstore dt input]
+  (doall (cs/map-components cstore
+                     (fn [paddle box controls]
+                       (alter box assoc :velocity (calc-paddle-velocity  (:signals @controls))))
+                     :paddle :box :controls)))
 ;     
 ; 
 ; (defn- update-slow-effect-components [manager dt]
@@ -434,6 +413,8 @@
 
 (def sample-mode
   (assoc default-mode :update (system-chain 
+                                controller-system
+                                paddle-movement-system
                                 box-mover-system
                                 ball-cieling-system
                              )))
@@ -518,15 +499,14 @@
 ;; SETUP
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-(defn held-keys [controller-mapping]
-  (map (comp second second) (filter (fn [[ctrl [act keycode]]] (= :held act)) controller-mapping)))
+(defn held-keys [action-keys]
+  (map (comp second second) 
+       (filter (fn [[ctrl [act keycode]]] (= :held act)) 
+               action-keys)))
 
-(defn held-key-watch-list [manager]
-  ; (let [cmaps (map :controller-mapping (em/entities-with-component manager :controller-mapping))]
-  ;   (mapcat held-keys cmaps)))
-  ;; TODO: map-components :controller-mapping
-  [])
-
+(defn held-key-watch-list [cstore]
+  (let [action-keys (cs/map-components cstore (fn [cm] (:action-keys @cm)) :controller-mapping)]
+        (mapcat held-keys action-keys)))
 
 (defn pong-screen [component-store snapshot]
   (let [fw-objs (ref {})
@@ -595,7 +575,7 @@
       (ball-entity cstore (next-eid))
       (field-entity cstore (next-eid))
       (red-paddle-entity cstore (next-eid))
-      ; (green-paddle-entity cstore (next-eid))
+      (green-paddle-entity cstore (next-eid))
       cstore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
