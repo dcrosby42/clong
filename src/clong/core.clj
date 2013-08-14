@@ -106,6 +106,16 @@
                   :controller-mapping {:action-keys {:up    [:held Input$Keys/UP]
                                                      :down  [:held Input$Keys/DOWN]
                                                      :shoot [:pressed Input$Keys/PERIOD]}}))
+(defn game-control-entity [cstore eid]
+  (add-components cstore eid
+             :game-control []
+             ; :id :game-control
+             :game-mode { :mode :ready }
+             :controls {:start false}
+             :controller-mapping {:start [:pressed Input$Keys/ENTER]
+                                  :pause [:pressed Input$Keys/SPACE]}
+))
+
 ; 
 ; (defn game-control-entity [manager]
 ;   (em/add-entity manager
@@ -304,12 +314,29 @@
 ;       manager)))
 ;
 (defn goal-system [cstore dt input]
-  (doall (cs/map-components' cstore 
+  (let [res (cs/map-components' cstore 
                              (fn [[ball ball-box] [goal goal-box]]
                                (if (b/box-piercing-box? (b/to-box @ball-box) (b/to-box @goal-box))
-                                 (println "GOAL for" (:score-goes-to @goal)))
-                               )
-                             [:ball :box] [:goal :box])))
+                                 (:score-goes-to @goal)
+                                 nil))
+                             [:ball :box] [:goal :box])
+        scorer-ids (set (filter identity res))]
+    (if (> (count scorer-ids) 0)
+      (do
+        (doall (cs/map-components cstore
+                                  (fn [paddle]
+                                    (if (get scorer-ids (:id @paddle))
+                                      (alter paddle (fn [p] (assoc p :score (inc (:score p)))))))
+                                  :paddle))
+        (doall (cs/map-components cstore
+                                  (fn [game-mode]
+                                    (alter game-mode assoc :mode :scored))
+                                  :game-mode))
+        )
+
+      )
+    )
+  )
 
 ; 
 ; (defn game-control-system [manager dt input]
@@ -446,7 +473,7 @@
     (.rect x y w h)
     (.end)))
 
-; (def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
+(def game-mode-strings {:playing "" :paused "PAUSED" :ready "Ready (Hit <Enter>)" :scored "** SCORE! **"})
 ; 
 ; (defn hud-rendering-system [manager dt input fw-objs]
 ;   (let [{camera       :camera
@@ -464,8 +491,31 @@
 ; 
 ;     (.end sprite-batch)
 ;     ))
-; 
-; 
+(defn hud-rendering-system [cstore dt input fw-objs]
+  (let [{camera       :camera
+         font         :font
+         sprite-batch :sprite-batch} fw-objs
+        paddle-idx    (reduce (fn [m paddle]
+                                (assoc m (:id paddle) paddle))
+                              {}
+                              (cs/map-components cstore deref :paddle))
+        game-mode     (first (cs/map-components cstore deref :game-mode))
+
+        red-score        (get-in paddle-idx [:red-paddle :score])
+        green-score      (get-in paddle-idx [:green-paddle :score])
+        game-mode-string (or (get game-mode-strings (:mode game-mode)) "??")]
+
+    (.setProjectionMatrix sprite-batch (.combined camera))
+    (.begin sprite-batch)
+
+    (.draw font sprite-batch (str "Red: " red-score) 20 20)
+    (.draw font sprite-batch (str "Green: " green-score) 400 20)
+    (.draw font sprite-batch game-mode-string 220 20)
+
+    (.end sprite-batch)
+    ))
+
+
 (defn box-rendering-system [cstore dt input {shape-renderer :shape-renderer :as fw-objs}]
   (doall (cs/map-components cstore 
                             (fn [box] 
@@ -479,7 +529,8 @@
 
 
 (def side-effector-systems 
-  [box-rendering-system])
+  [box-rendering-system
+   hud-rendering-system])
   ; [box-rendering-system
   ;  box-particle-rendering-system
   ;  hud-rendering-system])
@@ -561,13 +612,18 @@
 (defn base-component-store []
   (dosync 
     (let [cstore (cs/component-store)
-          entfuncs [yellow-ball-entity
+          entfuncs [
+                    
+                    yellow-ball-entity
                     ball-entity
                     field-entity
                     red-paddle-entity
                     green-paddle-entity
                     red-goal-entity
                     green-goal-entity
+
+                    game-control-entity
+
                     ]]
       (doseq [f entfuncs]
         (f cstore (next-eid)))
