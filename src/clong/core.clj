@@ -46,21 +46,32 @@
 
 (defn next-eid [] (gensym 'e))
 
+
+(defn yellow-ball-entity [cstore eid]
+  (cs/add-component cstore (cs/component eid :ball {}))
+  (cs/add-component cstore (cs/component eid :box {:size [10 10] :color yellow :position [10 100] :velocity [30 190]})))
+
 ; (defn reset-ball [box] (assoc box :position [220 120] :velocity [30 60]))
 ; 
 ; (defn ball-entity [manager] 
 ;   (em/add-entity manager 
 ;              :ball []
 ;              :box  (reset-ball {:size [10 10] :color white})))
-(defn yellow-ball-entity [cstore eid]
-  (cs/add-component cstore (cs/component (next-eid) :ball {}))
-  (cs/add-component cstore (cs/component (next-eid) :box {:size [10 10] :color yellow :position [10 100] :velocity [30 0]})))
+(defn game-ball [box] (assoc box :position [220 120] :velocity [30 60]))
+
+(defn ball-entity [cstore eid]
+  (cs/add-component cstore (cs/component eid :ball {}))
+  (cs/add-component cstore (cs/component eid :box (game-ball {:size [10 10] :color white}))))
 
 ; (defn field-entity [manager]
 ;   (em/add-entity manager
 ;              :field []
 ;              :box {:position [0 0] :size [480 320]}))
-;               
+
+(defn field-entity [cstore eid]
+  (cs/add-component cstore (cs/component eid :field {}))
+  (cs/add-component cstore (cs/component eid :box {:position [0 0] :size [480 320]})))
+
 ; (defn red-goal-entity [manager]
 ;   (em/add-entity manager
 ;              :goal []
@@ -145,7 +156,7 @@
 
 (defn box-mover-system [cstore dt input]
   (doall (cs/map-components cstore #(alter %1 m/update-mover dt) :box)))
-; 
+
 ; (defn ball-cieling-system [manager dt input]
 ;   (let [ball-eid (em/entity-id-with-component manager :ball)
 ;         box      (em/get-entity-component manager ball-eid :box)
@@ -160,8 +171,18 @@
 ;         (em/update-component manager ball-eid :box assoc :velocity v1))
 ;       ; else no change:
 ;       manager)))
-; 
-;     
+(defn ball-cieling-system [cstore dt input]
+  (doall (cs/map-components' cstore
+                             (fn [[ball ball-box] [field field-box]]
+                             (let [{[ball-x ball-y] :position, [ball-w ball-h] :size [dx dy] :velocity} @ball-box
+                                   {[field-x field-y] :position, [field-w field-h] :size} @field-box]
+                               (if (or (>= (+ ball-y ball-h) (+ field-y field-h)) (<= ball-y field-y) false)
+                                 ; If box has collided with top or bottom of field, negate vertical velocity:
+                                   ; update the box component for the ball entity:
+                                   (alter ball-box assoc :velocity [dx (* -1 dy)]))
+                                 ))
+                             [:ball :box] [:field :box])))
+
 ; (defn ball-paddle-system [manager dt input]
 ;   (let [ball-eid (em/entity-id-with-component manager :ball)
 ;         ball-box (em/get-entity-component manager ball-eid :box)
@@ -396,6 +417,7 @@
 (def sample-mode
   (assoc default-mode :update (system-chain 
                                 box-mover-system
+                                ball-cieling-system
                              )))
 
 ; (def paused-mode froze-mode)
@@ -457,7 +479,8 @@
 ; 
 (defn box-rendering-system [cstore dt input {shape-renderer :shape-renderer :as fw-objs}]
   (doall (cs/map-components cstore 
-                            #(draw-block shape-renderer @%1) 
+                            (fn [box] 
+                              (if (:color @box) (draw-block shape-renderer @box))) 
                             :box)))
 
 ; (defn box-particle-rendering-system [manager dt input {shape-renderer :shape-renderer :as fw-objs}]
@@ -511,7 +534,6 @@
                          mode-fns  (:sample-mode modes)
                          update-fn (get mode-fns :update)]
 
-                     ; (println update-fn component-store dt input1) ;; Update game state
                      (update-fn component-store dt input1) ;; Update game state
 
                      ;; Clear input:
@@ -552,6 +574,8 @@
   (dosync 
     (let [cstore (cs/component-store)]
       (yellow-ball-entity cstore (next-eid))
+      (ball-entity cstore (next-eid))
+      (field-entity cstore (next-eid))
       cstore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -570,23 +594,25 @@
 ; (defonce snapshot (ref {:input nil :entity-manager nil}))
 
 (defonce component-store-ref (ref (base-component-store)))
-(defn reset-component-store! [] (dosync (ref-set component-store-ref (ref (base-component-store)))))
+(defn reset-component-store! [] (dosync (ref-set component-store-ref (base-component-store))))
 ;;(reset-component-store!)
 (defonce snapshot (ref {:input nil :component-store nil}))
 
 (defn reset-screen! [] 
-  ; (set-screen! (pong-screen @component-store-ref snapshot)))
-  (set-screen! (pong-screen (base-component-store) snapshot)))
+  (reset-component-store!)
+  (set-screen! (pong-screen @component-store-ref snapshot)))
+  ; (set-screen! (pong-screen (base-component-store) snapshot)))
 
 ; (defn rl [] (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover :reload)(use 'clong.core :reload))
 (defn rl [] 
   (require 'clong.utils 'clong.gdx-helpers 'clong.input 'clong.box 'clong.ecs.entity-manager 'clong.ecs.components.mover 'clong.ecs.component-store :reload)
   (use 'clong.core :reload))
 
-(defn rr [] (rl)(reset-screen!))
-(defn rs [] (rr)(reset-component-store!))
+;(defn rr [] (rl)(reset-screen!))
+;(defn rs [] (rr)(reset-component-store!))
 
 (reset-screen!)
+(def cstore @component-store-ref)
 
 (defn -main [& args]
   )
