@@ -55,7 +55,7 @@
                   :ball {}
                   :box {:size [10 10] 
                         :color yellow 
-                        :position [10 100] 
+                        :position [40 100] 
                         :velocity [30 190]}))
 
 (defn game-ball [box] (assoc box :position [220 120] :velocity [30 60]))
@@ -70,29 +70,16 @@
                   :field {}
                   :box {:position [0 0] :size [480 320]}))
 
-; (defn red-goal-entity [manager]
-;   (em/add-entity manager
-;              :goal []
-;              :score-goes-to :green-paddle
-;              :box {:position [-20 0] :size [20 320]}))
-; 
-; (defn green-goal-entity [manager]
-;   (em/add-entity manager
-;              :goal []
-;              :score-goes-to :red-paddle
-;              :box {:position [480 0] :size [20 320]}))
-; 
-; (defn red-paddle-entity [manager] 
-;   (em/add-entity manager 
-;              :paddle   []
-;              :id       :red-paddle
-;              :score    0
-;              :box      {:position [20 90] :size [12 48] :velocity [0 0] :color red}
-;              :controls {:up false :down false :shoot false}
-;              :controller-mapping {:up    [:held Input$Keys/W]
-;                                   :down  [:held Input$Keys/S]
-;                                   :shoot [:pressed Input$Keys/E]}))
-;
+(defn red-goal-entity [cstore eid]
+  (add-components cstore eid
+             :goal {:score-goes-to :green-paddle}
+             :box {:position [-20 0] :size [20 320]}))
+
+(defn green-goal-entity [cstore eid]
+  (add-components cstore eid
+             :goal {:score-goes-to :red-paddle}
+             :box {:position [480 0] :size [20 320]}))
+
 (defn red-paddle-entity [cstore eid] 
   (add-components cstore eid
                   :paddle {:id    :red-paddle
@@ -175,21 +162,16 @@
                                ))
                              [:ball :box] [:field :box])))
 
-; (defn ball-paddle-system [manager dt input]
-;   (let [ball-eid (em/entity-id-with-component manager :ball)
-;         ball-box (em/get-entity-component manager ball-eid :box)
-;         ball-b-box (b/to-box ball-box)
-;         paddle-boxes (map (fn [p] (b/to-box (:box p))) (em/entities-with-component manager :paddle))]
-;     (if (some #(b/box-piercing-box? ball-b-box %1) paddle-boxes)
-;       ; ball has struck a paddle
-;       (let [{[dx dy] :velocity} ball-box
-;             v1 [(* -1 dx) dy]]
-;         ; negate the horiz velocity:
-;         (em/update-component manager ball-eid :box assoc :velocity v1))
-;       ; else no change:
-;       manager)))
-; 
-; 
+(defn ball-paddle-system [cstore dt input]
+  (doall (cs/map-components' cstore
+                      (fn [[ball ball-box] [paddle paddle-box]]
+                          (if (b/box-piercing-box? (b/to-box @ball-box) (b/to-box @paddle-box))
+                            (let [[dx dy] (:velocity @ball-box)]
+                              (alter ball-box assoc :velocity [(* -1 dx) dy])
+                          )))
+                      [:ball :box] [:paddle :box])))
+      
+
 (defn resolve-controls [input action-keys]
   (vmap (fn [k [action key-code]] 
           (contains? (action input) key-code)) action-keys))
@@ -197,10 +179,7 @@
 (defn controller-system [cstore dt input]
   (doall (cs/map-components cstore 
                      (fn [controls controller-mapping]
-                       ; (println @controls)
-                       (alter controls assoc :signals (resolve-controls input (:action-keys @controller-mapping)))
-                       ; (println @controls)
-                       )
+                       (alter controls assoc :signals (resolve-controls input (:action-keys @controller-mapping))))
                      :controls :controller-mapping)))
 
 (defn calc-paddle-velocity [signals]
@@ -323,6 +302,15 @@
 ;           )
 ;         manager)
 ;       manager)))
+;
+(defn goal-system [cstore dt input]
+  (doall (cs/map-components' cstore 
+                             (fn [[ball ball-box] [goal goal-box]]
+                               (if (b/box-piercing-box? (b/to-box @ball-box) (b/to-box @goal-box))
+                                 (println "GOAL for" (:score-goes-to @goal)))
+                               )
+                             [:ball :box] [:goal :box])))
+
 ; 
 ; (defn game-control-system [manager dt input]
 ;   (let [mode (get-mode manager)
@@ -417,6 +405,8 @@
                                 paddle-movement-system
                                 box-mover-system
                                 ball-cieling-system
+                                ball-paddle-system
+                                goal-system
                              )))
 
 ; (def paused-mode froze-mode)
@@ -570,12 +560,17 @@
 ;                            ))
 (defn base-component-store []
   (dosync 
-    (let [cstore (cs/component-store)]
-      (yellow-ball-entity cstore (next-eid))
-      (ball-entity cstore (next-eid))
-      (field-entity cstore (next-eid))
-      (red-paddle-entity cstore (next-eid))
-      (green-paddle-entity cstore (next-eid))
+    (let [cstore (cs/component-store)
+          entfuncs [yellow-ball-entity
+                    ball-entity
+                    field-entity
+                    red-paddle-entity
+                    green-paddle-entity
+                    red-goal-entity
+                    green-goal-entity
+                    ]]
+      (doseq [f entfuncs]
+        (f cstore (next-eid)))
       cstore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
