@@ -44,14 +44,23 @@
 (def yellow [1 1 0 1])
 
 
-(defn next-eid [] (gensym 'e))
+; (defn next-eid [] (gensym 'e))
+(defn new-eid-sequence [] (repeatedly #(gensym 'e)))
 
-(defn add-components [cstore eid & pairs]
-  (doseq [[ctype data] (apply array-map pairs)]
-    (cs/add-component cstore (cs/component eid ctype data))))
+(defn- make-components [eid & pairs]
+  (map (fn [[ctype data]] (cs/component eid ctype data))
+   (apply array-map pairs)))
 
-(defn yellow-ball-entity [cstore eid]
-  (add-components cstore eid 
+; (defn add-components [cstore eid & pairs]
+;   (doseq [component (apply make-components eid pairs)]
+;     (cs/add-component cstore component)))
+
+; (defn add-components [cstore eid & pairs]
+;   (doseq [[ctype data] (apply array-map pairs)]
+;     (cs/add-component cstore (cs/component eid ctype data))))
+
+(defn yellow-ball-entity [eid]
+  (make-components eid 
                   :ball {}
                   :box {:size [10 10] 
                         :color yellow 
@@ -60,28 +69,28 @@
 
 (defn game-ball [box] (assoc box :position [220 120] :velocity [30 60]))
 
-(defn ball-entity [cstore eid]
-  (add-components cstore eid
+(defn ball-entity [eid]
+  (make-components eid
                   :ball {}
                   :box (game-ball {:size [10 10] :color white})))
 
-(defn field-entity [cstore eid]
-  (add-components cstore eid
+(defn field-entity [eid]
+  (make-components eid
                   :field {}
                   :box {:position [0 0] :size [480 320]}))
 
-(defn red-goal-entity [cstore eid]
-  (add-components cstore eid
+(defn red-goal-entity [eid]
+  (make-components eid
              :goal {:score-goes-to :green-paddle}
              :box {:position [-20 0] :size [20 320]}))
 
-(defn green-goal-entity [cstore eid]
-  (add-components cstore eid
+(defn green-goal-entity [eid]
+  (make-components eid
              :goal {:score-goes-to :red-paddle}
              :box {:position [480 0] :size [20 320]}))
 
-(defn red-paddle-entity [cstore eid] 
-  (add-components cstore eid
+(defn red-paddle-entity [eid] 
+  (make-components eid
                   :paddle {:id    :red-paddle
                            :score 0}
                   :box    {:color red
@@ -94,8 +103,8 @@
                                                     :shoot [:pressed Input$Keys/E]}}
                   ))
 
-(defn green-paddle-entity [cstore eid] 
-  (add-components cstore eid
+(defn green-paddle-entity [eid] 
+  (make-components eid
                   :paddle   {:id    :green-paddle
                              :score 0}
                   :box      {:color green
@@ -106,8 +115,8 @@
                   :controller-mapping {:action-keys {:up    [:held Input$Keys/UP]
                                                      :down  [:held Input$Keys/DOWN]
                                                      :shoot [:pressed Input$Keys/PERIOD]}}))
-(defn game-control-entity [cstore eid]
-  (add-components cstore eid
+(defn game-control-entity [eid]
+  (make-components eid
              :game-control []
              ; :id :game-control
              :game-mode { :mode :ready }
@@ -612,8 +621,7 @@
 (defn base-component-store []
   (dosync 
     (let [cstore (cs/component-store)
-          entfuncs [
-                    
+          constructors [
                     yellow-ball-entity
                     ball-entity
                     field-entity
@@ -621,12 +629,12 @@
                     green-paddle-entity
                     red-goal-entity
                     green-goal-entity
-
                     game-control-entity
+                    ]
+          comps (mapcat (fn [f eid] (f eid) ) constructors (new-eid-sequence))
+          ]
 
-                    ]]
-      (doseq [f entfuncs]
-        (f cstore (next-eid)))
+      (doseq [c comps] (cs/add-component cstore c))
       cstore)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
