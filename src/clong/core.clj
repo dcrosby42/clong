@@ -65,7 +65,9 @@
                   :box {:size [10 10] 
                         :color yellow 
                         :position [40 100] 
-                        :velocity [30 190]}))
+                        :velocity [30 190]}
+                   :controls {}
+                   :timer {:trigger :ping, :ttl 3, :recur true, :interval 3}))
 
 (defn game-ball [box] (assoc box :position [220 120] :velocity [30 60]))
 
@@ -97,7 +99,7 @@
                            :position [20 90] 
                            :size     [12 48] 
                            :velocity [0 0]}
-                  :controls    {:up false :down false :shoot false}
+                  :controls    {}
                   :controller-mapping {:action-keys {:up    [:held Input$Keys/W]
                                                     :down  [:held Input$Keys/S]
                                                     :shoot [:pressed Input$Keys/E]}}
@@ -111,7 +113,7 @@
                              :size [12 48] 
                              :velocity [0 0] 
                              :position [440 60]}
-                  :controls {:up false :down false :shoot false}
+                  :controls {}
                   :controller-mapping {:action-keys {:up    [:held Input$Keys/UP]
                                                      :down  [:held Input$Keys/DOWN]
                                                      :shoot [:pressed Input$Keys/PERIOD]}}))
@@ -120,7 +122,7 @@
              :game-control []
              ; :id :game-control
              :game-mode { :mode :ready }
-             :controls {:start false}
+             :controls {}
              :controller-mapping {:start [:pressed Input$Keys/ENTER]
                                   :pause [:pressed Input$Keys/SPACE]}
 ))
@@ -189,7 +191,19 @@
                               (alter ball-box assoc :velocity [(* -1 dx) dy])
                           )))
                       [:ball :box] [:paddle :box])))
-      
+
+(defn- clear-signal [controls signame]
+  (alter controls update-in [:signals signame] (fn [_] false)))
+
+(defn ball-ping-system [cstore dt input]
+  (doall (cs/map-components cstore
+                             (fn [ball controls]
+                               (if (get-in @controls [:signals :ping])
+                                 (do 
+                                   (println "<<PING!>>")
+                                   (clear-signal controls :ping))
+                                 ))
+                             :ball :controls)))
 
 (defn resolve-controls [input action-keys]
   (vmap (fn [k [action key-code]] 
@@ -211,6 +225,24 @@
                      (fn [paddle box controls]
                        (alter box assoc :velocity (calc-paddle-velocity  (:signals @controls))))
                      :paddle :box :controls)))
+
+(defn timer-controls-system [cstore dt input]
+  (doall (cs/map-components cstore
+                            (fn [timer controls]
+                              (let [ttl' (- (:ttl @timer) dt)]
+                                (if (<= ttl' 0)
+                                  ; time!
+                                  (do
+                                    (alter controls assoc-in [:signals (:trigger @timer)] true)
+                                    (if (:recur @timer)
+                                      ; reset timer:
+                                      (alter timer assoc :ttl (:interval @timer))
+                                      ; clear timer:
+                                      (cs/remove-component cstore timer))
+                                    ) ; do
+                                  ; else countdown:
+                                  (alter timer assoc :ttl ttl'))))
+                            :timer :controls)))
 ;     
 ; 
 ; (defn- update-slow-effect-components [manager dt]
@@ -438,10 +470,12 @@
 (def sample-mode
   (assoc default-mode :update (system-chain 
                                 controller-system
+                                timer-controls-system
                                 paddle-movement-system
                                 box-mover-system
                                 ball-cieling-system
                                 ball-paddle-system
+                                ball-ping-system
                                 goal-system
                              )))
 

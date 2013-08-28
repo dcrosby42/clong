@@ -26,6 +26,13 @@
         eid            (:eid  @component-ref)]
     (alter cstore update-in [component-type eid] #(cons component-ref %1))))
 
+(defn remove-component
+  "Remove the given component ref from the component store."
+  [cstore component-ref]
+  (alter cstore (fn [cstore]
+                  (let [{component-type :type, eid :eid} @component-ref]
+                    (update-in cstore [component-type eid] #(remove #{component-ref} %1))))))
+
 (defn get-components-for-entity 
   "Get the components of component-type for the given entity.
   Returns list of component refs, or empty list if entity not found or entity has no such components."

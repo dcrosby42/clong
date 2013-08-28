@@ -192,7 +192,36 @@
               (is (= #{"Mack E is on The Map and the boss is Great Huntress", "Mater C is on The Map and the boss is Great Huntress"} (set truck-result)))
               ))
           )
+
       )
+
+        (testing "remove-component"
+          (let [cstore (cs/component-store)
+                left-gun   (cs/component 'me :gun {:style "Remington"})
+                right-gun  (cs/component 'me :gun {:style "Colt"})
+                other-gun  (cs/component 'other :gun {:style "Colt"})
+                peek-guns (fn [eid] (set (map 
+                                           (fn [gun-ref] (:style @gun-ref)) 
+                                           (cs/get-components-for-entity cstore eid :gun))))
+                ]
+            (dosync
+                  (cs/add-component cstore left-gun)
+                  (cs/add-component cstore right-gun)
+                  (cs/add-component cstore other-gun)
+              )
+            ; sanity check:
+            (is (= #{"Remington" "Colt"} (peek-guns 'me)))
+            ; go:
+            (dosync (cs/remove-component cstore left-gun))
+            ; see remington is gone:
+            (is (= #{"Colt"} (peek-guns 'me)))
+            ; see other entity unnaffected:
+            (is (= #{"Colt"} (peek-guns 'other)))
+
+            )
+
+          )
+          
 
       (let [mk-kittehs (fn [] 
                          (mk-cstore (mk-comps
@@ -229,10 +258,11 @@
                   (is (= 2 (:counter @(cs/get-component-for-entity cstore 'e1 :fish))))
                   (is (= 6 (:counter @(cs/get-component-for-entity cstore 'e2 :fish))))
                   (is (= 22 (:counter @(cs/get-component-for-entity cstore 'e1 :cat))))
+
                   (is (= 16 (:counter @(cs/get-component-for-entity cstore 'e2 :cat))))
                   ))
 
-              ) ; update-compoents       
+              ) ; update-components       
             ) ; let
 
             ); outter let
