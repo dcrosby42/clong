@@ -205,12 +205,12 @@
 (defn ball-ping-system [cstore dt input]
   (doall (cs/map-components cstore
                              (fn [ball controls box]
-                               (if (get-signal controls :ping)
+                               (when (get-signal controls :ping)
                                  (do 
-                                   (println "<<PING!>>")
-                                   (alter box assoc :color red)
-                                   (clear-signal controls :ping))
-                                 ))
+                                   (if (= red (:color @box))
+                                     (alter box assoc :color yellow)
+                                     (alter box assoc :color red))
+                                   (clear-signal controls :ping))))
                              :ball :controls :box)))
 
 (defn resolve-controls [input action-keys]
@@ -364,13 +364,13 @@
 ;       manager)))
 ;
 (defn goal-system [cstore dt input]
-  (let [res (cs/map-components' cstore 
+  (let [scorings (cs/map-components' cstore 
                              (fn [[ball ball-box] [goal goal-box]]
                                (if (b/box-piercing-box? (b/to-box @ball-box) (b/to-box @goal-box))
                                  (:score-goes-to @goal)
                                  nil))
                              [:ball :box] [:goal :box])
-        scorer-ids (set (filter identity res))]
+        scorer-ids (set (filter identity scorings))]
     (if (> (count scorer-ids) 0)
       (do
         (doall (cs/map-components cstore
