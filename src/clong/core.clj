@@ -192,18 +192,26 @@
                           )))
                       [:ball :box] [:paddle :box])))
 
+(defn- set-signal 
+  ([controls signame] (set-signal controls signame true))
+  ([controls signame value] (alter controls assoc-in [:signals signame] value)))
+
+(defn- get-signal [controls signame] 
+  (get-in @controls [:signals signame]))
+
 (defn- clear-signal [controls signame]
-  (alter controls update-in [:signals signame] (fn [_] false)))
+  (set-signal controls signame false))
 
 (defn ball-ping-system [cstore dt input]
   (doall (cs/map-components cstore
-                             (fn [ball controls]
-                               (if (get-in @controls [:signals :ping])
+                             (fn [ball controls box]
+                               (if (get-signal controls :ping)
                                  (do 
                                    (println "<<PING!>>")
+                                   (alter box assoc :color red)
                                    (clear-signal controls :ping))
                                  ))
-                             :ball :controls)))
+                             :ball :controls :box)))
 
 (defn resolve-controls [input action-keys]
   (vmap (fn [k [action key-code]] 
@@ -233,7 +241,8 @@
                                 (if (<= ttl' 0)
                                   ; time!
                                   (do
-                                    (alter controls assoc-in [:signals (:trigger @timer)] true)
+                                    (set-signal controls (:trigger @timer))
+                                    ; (alter controls assoc-in [:signals (:trigger @timer)] true)
                                     (if (:recur @timer)
                                       ; reset timer:
                                       (alter timer assoc :ttl (:interval @timer))
