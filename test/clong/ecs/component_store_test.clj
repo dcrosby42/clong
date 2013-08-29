@@ -255,6 +255,11 @@
               (is (= #{ball2} (get-comps :ball)))
               (is (= #{box2} (get-comps :box)))
 
+              ; get the last entity out:
+              (dosync (cs/remove-entity cstore 'ent2))
+
+              (is (empty? (get-comps :ball)))
+              (is (empty? (get-comps :box)))
               ) ; let
           )
         )
