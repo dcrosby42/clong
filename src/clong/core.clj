@@ -120,11 +120,11 @@
 (defn game-control-entity [eid]
   (make-components eid
              :game-control []
-             ; :id :game-control
              :game-mode { :mode :ready }
              :controls {}
              :controller-mapping {:start [:pressed Input$Keys/ENTER]
                                   :pause [:pressed Input$Keys/SPACE]}
+             :game-score { :red-paddle 0 :green-paddle 0 }
 ))
 
 ; 
@@ -348,47 +348,32 @@
 ;                       (fn [{[x y] :position :as box} paddle] 
 ;                         (assoc box :position [x (clamp 0 270 y)]))))
 ; 
-; (defn first-overlapping-goal [goals ball]
-;   (first (drop-while (fn [goal] (not (b/box-piercing-box? (b/to-box (:box ball)) (b/to-box (:box goal))))) goals)))
-; 
-; (defn goal-system [manager dt input]
-;   (let [goals (em/entities-with-component manager :goal)
-;         ball  (em/entity-with-component manager :ball)]
-;     (if-let [{scorer :score-goes-to} (first-overlapping-goal goals ball)]
-;       (if-let [{eid :eid} (em/search-entity manager :id scorer)]
-;         (-> manager 
-;           (em/update-component eid :score inc)
-;           (change-to-mode :scored)
-;           )
-;         manager)
-;       manager)))
-;
+
+(defn- detect-goal-scorers [cstore]
+  (let [scorings (cs/map-components' 
+                   cstore 
+                   (fn [[ball ball-box] [goal goal-box]]
+                     (if (b/box-piercing-box? (b/to-box @ball-box) (b/to-box @goal-box))
+                       (:score-goes-to @goal)
+                       nil))
+                   [:ball :box] [:goal :box])]
+        (set (filter identity scorings))))
+
+(defn- update-scores [cstore scorer-ids]
+  (cs/update-components 
+    cstore 
+    (fn [game-score] 
+      (reduce (fn [gs scorer-id] (update-in gs [scorer-id] inc))
+              game-score
+              scorer-ids))
+    :game-score))
+
+
 (defn goal-system [cstore dt input]
-  (let [scorings (cs/map-components' cstore 
-                             (fn [[ball ball-box] [goal goal-box]]
-                               (if (b/box-piercing-box? (b/to-box @ball-box) (b/to-box @goal-box))
-                                 (:score-goes-to @goal)
-                                 nil))
-                             [:ball :box] [:goal :box])
-        scorer-ids (set (filter identity scorings))]
+  (let [scorer-ids (detect-goal-scorers cstore)]
     (if (> (count scorer-ids) 0)
-      (do
-        (doall (cs/map-components cstore
-                                  (fn [paddle]
-                                    (if (get scorer-ids (:id @paddle))
-                                      (alter paddle (fn [p] (assoc p :score (inc (:score p)))))))
-                                  :paddle))
-        (doall (cs/map-components cstore
-                                  (fn [game-mode]
-                                    (alter game-mode assoc :mode :scored))
-                                  :game-mode))
-        )
+      (update-scores cstore (detect-goal-scorers cstore)))))
 
-      )
-    )
-  )
-
-; 
 ; (defn game-control-system [manager dt input]
 ;   (let [mode (get-mode manager)
 ;         [[_ controls] & _] (em/search-components manager [:controls :game-control])]
@@ -399,9 +384,6 @@
 ;       :scored (if (or (:start controls) (:pause controls)) (change-to-mode manager :ready) manager)
 ;       manager)))
 ; 
-; (defn timer-system [manager dt input]
-;   (em/update-components manager :timer (fn [{ttl :ttl :as timer}] 
-;                                          (assoc timer :ttl (- ttl dt)))))
 ; 
 ; (defn scored-system [manager dt input]
 ;   (let [timer (:timer (em/search-entity manager :id :scored-timer))]
@@ -547,14 +529,13 @@
   (let [{camera       :camera
          font         :font
          sprite-batch :sprite-batch} fw-objs
-        paddle-idx    (reduce (fn [m paddle]
-                                (assoc m (:id paddle) paddle))
-                              {}
-                              (cs/map-components cstore deref :paddle))
-        game-mode     (first (cs/map-components cstore deref :game-mode))
 
-        red-score        (get-in paddle-idx [:red-paddle :score])
-        green-score      (get-in paddle-idx [:green-paddle :score])
+        game-score     @(first (cs/get-components cstore :game-score))
+
+        {red-score :red-paddle
+         green-score :green-paddle} game-score
+
+        game-mode     @(first (cs/get-components cstore :game-mode))
         game-mode-string (or (get game-mode-strings (:mode game-mode)) "??")]
 
     (.setProjectionMatrix sprite-batch (.combined camera))
