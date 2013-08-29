@@ -196,31 +196,68 @@
       )
 
         (testing "remove-component"
-          (let [cstore (cs/component-store)
-                left-gun   (cs/component 'me :gun {:style "Remington"})
-                right-gun  (cs/component 'me :gun {:style "Colt"})
-                other-gun  (cs/component 'other :gun {:style "Colt"})
-                peek-guns (fn [eid] (set (map 
-                                           (fn [gun-ref] (:style @gun-ref)) 
-                                           (cs/get-components-for-entity cstore eid :gun))))
-                ]
-            (dosync
-                  (cs/add-component cstore left-gun)
-                  (cs/add-component cstore right-gun)
-                  (cs/add-component cstore other-gun)
-              )
-            ; sanity check:
-            (is (= #{"Remington" "Colt"} (peek-guns 'me)))
-            ; go:
-            (dosync (cs/remove-component cstore left-gun))
-            ; see remington is gone:
-            (is (= #{"Colt"} (peek-guns 'me)))
-            ; see other entity unnaffected:
-            (is (= #{"Colt"} (peek-guns 'other)))
+          (testing "it removes a component by reference"
+            (let [cstore (cs/component-store)
+                  left-gun   (cs/component 'me :gun {:style "Remington"})
+                  right-gun  (cs/component 'me :gun {:style "Colt"})
+                  other-gun  (cs/component 'other :gun {:style "Colt"})
+                  peek-guns (fn [eid] (set (map 
+                                             (fn [gun-ref] (:style @gun-ref)) 
+                                             (cs/get-components-for-entity cstore eid :gun))))
+                  ]
+              (dosync
+                (cs/add-component cstore left-gun)
+                (cs/add-component cstore right-gun)
+                (cs/add-component cstore other-gun))
+              ; sanity check:
+              (is (= #{"Remington" "Colt"} (peek-guns 'me)))
+              ; go:
+              (dosync (cs/remove-component cstore left-gun))
+              ; see remington is gone:
+              (is (= #{"Colt"} (peek-guns 'me)))
+              ; see other entity unnaffected:
+              (is (= #{"Colt"} (peek-guns 'other)))
+              ) ; let
+          )
 
+          (testing "it does nothing when ref doesn't exist in store"
+            (let [cstore (cs/component-store)
+                  oddball   (cs/component 'whatev :ball {:tag "Odd"})]
+              (is (empty? (keys @cstore)))
+              (dosync (cs/remove-component cstore oddball))
+              (is (= #{:ball} (set (keys @cstore)))) ; assoc-in leaves a trail
+              ) ; let
             )
 
           )
+      (testing "remove-entity"
+        (testing "it removes all components associated with the given entity id"
+            (let [cstore (cs/component-store)
+                  ball1   (cs/component 'ent1 :ball {:name "Big"})
+                  box1    (cs/component 'ent1 :box {:style "Al"})
+                  ball2   (cs/component 'ent2 :ball {:style "Little"})
+                  box2    (cs/component 'ent2 :box {:style "Fish"})
+                  get-comps (fn [ctype] (set (cs/get-components cstore ctype)))]
+
+              (dosync
+                (cs/add-component cstore ball1)
+                (cs/add-component cstore box1)
+                (cs/add-component cstore ball2)
+                (cs/add-component cstore box2))
+
+              ; sanity check:
+              (is (= #{ball1 ball2} (get-comps :ball)))
+              (is (= #{box1 box2} (get-comps :box)))
+
+              ; go:
+              (dosync (cs/remove-entity cstore 'ent1))
+
+              (is (= #{ball2} (get-comps :ball)))
+              (is (= #{box2} (get-comps :box)))
+
+              ) ; let
+          )
+        )
           
 
       (let [mk-kittehs (fn [] 
